@@ -1,0 +1,8 @@
+{
+  "name": "Moinkcraft Thrie",
+  "description": "Moinkcraft 3 - A 2D sandbox survival game featuring a 7-slot hexagon crafting system, infinite-craft style recipes, dynamic falling blocks, and a modular sprite engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
