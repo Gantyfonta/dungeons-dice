@@ -7,8 +7,9 @@
     <meta name="description" content="Moinkcraft 3 - A 2D sandbox survival game featuring a 7-slot hexagon crafting system, infinite-craft style recipes, dynamic falling blocks, and a modular sprite engine.">
     <meta property="og:title" content="Moinkcraft Thrie">
     <meta property="og:description" content="Moinkcraft 3 - A 2D sandbox survival game featuring a 7-slot hexagon crafting system, infinite-craft style recipes, dynamic falling blocks, and a modular sprite engine.">
-    <script src="/sprites.js"></script>
-    <script src="/recipes.js"></script>
+    <script src="./sprites.js"></script>
+    <script src="./recipes.js"></script>
+    <script src="./structures.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDKs -->
     <script type="module">
@@ -1027,7 +1028,15 @@
             202: { name: 'Jump Potion', color: '#a5d6a7', stroke: '#388e3c', item: true, type: 'potion', effect: 'jump', duration: 60 * 20 },
             203: { name: 'Night Vision Potion', color: '#9575cd', stroke: '#512da8', item: true, type: 'potion', effect: 'night_vision', duration: 120 * 20 },
             211: { name: 'Scrap', color: '#78909c', stroke: '#455a64', item: true },
-            212: { name: 'Scrap Block', color: '#546e7a', stroke: '#37474f', hardness: 45, tool: 'pickaxe', requiredTier: 1, drop: 211 }
+            212: { name: 'Scrap Block', color: '#546e7a', stroke: '#37474f', hardness: 45, tool: 'pickaxe', requiredTier: 1, drop: 211 },
+            213: { name: 'Hammer', color: '#8d6e63', stroke: '#5d4037', item: true, toolType: 'hammer' },
+            214: { name: 'Door', color: '#8d6e63', stroke: '#5d4037', item: true, drop: 214 },
+            215: { name: 'Door Bottom', color: '#8d6e63', stroke: '#5d4037', hardness: 15, tool: 'axe', interactive: true, drop: 214 },
+            216: { name: 'Door Top', color: '#8d6e63', stroke: '#5d4037', hardness: 15, tool: 'axe', interactive: true, drop: 214 },
+            217: { name: 'Trapdoor', color: '#8d6e63', stroke: '#5d4037', hardness: 15, tool: 'axe', interactive: true, drop: 217 },
+            218: { name: 'Cactus', color: '#2e7d32', stroke: '#1b5e20', hardness: 8, tool: 'axe', hazard: true, drop: 218 },
+            219: { name: 'Dead Bush', color: '#795548', stroke: '#5d4037', hardness: 2, nonSolid: true, drop: 15 },
+            220: { name: 'Sandstone', color: '#ffe082', stroke: '#ffd54f', hardness: 30, tool: 'pickaxe', requiredTier: 1, drop: 220 }
         };
         window.BLOCK_TYPES = BLOCK_TYPES;
 
@@ -2937,9 +2946,15 @@
         }
 
         function getOverworldSurfaceY(x) {
-            const broad = Math.sin(x * 0.022 + getSeedNumber() * 0.00001) * 6 + Math.sin(x * 0.055 + 1.4) * 3;
-            const detail = (worldHash(x, 17) - 0.5) * 3;
-            return Math.max(22, Math.min(62, Math.round(40 + broad + detail)));
+            const seed = getSeedNumber();
+            // Smooth multi-octave harmonic waves for natural rolling landscape without single-block jitter:
+            // 1. Broad regional elevation (period ~160-200 blocks)
+            const broad = Math.sin(x * 0.014 + seed * 0.0001) * 7.0;
+            // 2. Rolling hills and valleys (period ~60-80 blocks)
+            const hills = Math.sin(x * 0.036 + seed * 0.0002 + 1.4) * 3.8;
+            // 3. Gentle knolls and little bumps (period ~22-30 blocks)
+            const bumps = Math.sin(x * 0.09 + seed * 0.0003 + 2.8) * 1.4;
+            return Math.max(22, Math.min(62, Math.round(42 + broad + hills + bumps)));
         }
 
         function isOverworldCave(x, y) {

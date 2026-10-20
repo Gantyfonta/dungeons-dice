@@ -3202,6 +3202,190 @@ SPRITES[212] = {
 };
 SPRITES["scrap_block"] = SPRITES[212];
 
+// 213: Hammer
+SPRITES[213] = {
+  id: 213,
+  name: "Hammer",
+  colors: {
+    ".": "transparent",
+    "h": "#9e9e9e", // Light iron mallet head
+    "H": "#616161", // Dark iron mallet head
+    "s": "#8d6e63", // Handle wood
+    "S": "#5d4037", // Handle dark wood
+    "g": "#424242"  // Head outline/trim
+  },
+  pixels: [
+    "..ghg..",
+    ".gHHHg.",
+    "..gHg..",
+    "...s...",
+    "...s...",
+    "...S...",
+    "...S..."
+  ]
+};
+SPRITES["hammer"] = SPRITES[213];
+
+// 214: Door (Item)
+SPRITES[214] = {
+  id: 214,
+  name: "Door",
+  colors: {
+    ".": "transparent",
+    "f": "#4e342e", // Dark frame
+    "w": "#8d6e63", // Wood panel
+    "l": "#a1887f", // Light wood
+    "g": "#ffd54f", // Brass handle
+    "d": "#3e2723"  // Inset shadow
+  },
+  pixels: [
+    ".ffff..",
+    ".fwlf..",
+    ".fwwf..",
+    ".fwgf..",
+    ".fwdf..",
+    ".fwwf..",
+    ".ffff.."
+  ]
+};
+SPRITES["door"] = SPRITES[214];
+
+// 215: Door Bottom
+SPRITES[215] = {
+  id: 215,
+  name: "Door Bottom",
+  colors: {
+    "f": "#4e342e",
+    "w": "#8d6e63",
+    "l": "#a1887f",
+    "g": "#ffd54f",
+    "d": "#3e2723"
+  },
+  pixels: [
+    "fffffgg",
+    "fwwwfd.",
+    "fwwlfd.",
+    "fwwwfd.",
+    "fwwdfd.",
+    "fwwwfd.",
+    "fffffff"
+  ]
+};
+SPRITES["door_bottom"] = SPRITES[215];
+
+// 216: Door Top
+SPRITES[216] = {
+  id: 216,
+  name: "Door Top",
+  colors: {
+    "f": "#4e342e",
+    "w": "#8d6e63",
+    "l": "#a1887f",
+    "d": "#3e2723",
+    "q": "#b3e5fc" // Window pane
+  },
+  pixels: [
+    "fffffff",
+    "fqqffqf",
+    "fqqffqf",
+    "fffffff",
+    "fwwlfd.",
+    "fwwwfd.",
+    "fffffff"
+  ]
+};
+SPRITES["door_top"] = SPRITES[216];
+
+// 217: Trapdoor
+SPRITES[217] = {
+  id: 217,
+  name: "Trapdoor",
+  colors: {
+    "f": "#3e2723",
+    "w": "#8d6e63",
+    "l": "#a1887f",
+    "d": "#5d4037",
+    "g": "#ffd54f"
+  },
+  pixels: [
+    "fffffff",
+    "fwwfwwf",
+    "fwlfwwf",
+    "fffgfff",
+    "fwwfwwf",
+    "fwwfdwf",
+    "fffffff"
+  ]
+};
+SPRITES["trapdoor"] = SPRITES[217];
+
+// 218: Cactus
+SPRITES[218] = {
+  id: 218,
+  name: "Cactus",
+  colors: {
+    ".": "transparent",
+    "c": "#2e7d32", // Mid green
+    "C": "#1b5e20", // Dark spine green
+    "l": "#43a047", // Light ridge green
+    "s": "#e8f5e9"  // Spine needles
+  },
+  pixels: [
+    ".cclcc.",
+    "sCclcCs",
+    ".Cclcc.",
+    "sCclcCs",
+    ".cclcc.",
+    "sCclcCs",
+    ".cclcc."
+  ]
+};
+SPRITES["cactus"] = SPRITES[218];
+
+// 219: Dead Bush
+SPRITES[219] = {
+  id: 219,
+  name: "Dead Bush",
+  colors: {
+    ".": "transparent",
+    "b": "#795548", // Dry branch
+    "B": "#5d4037", // Dark twig
+    "t": "#a1887f"  // Pale dead leaf
+  },
+  pixels: [
+    "...b...",
+    ".t.B.t.",
+    ".B.b.B.",
+    "..bBb..",
+    ".b.B.b.",
+    "..BBB..",
+    "...B..."
+  ]
+};
+SPRITES["dead_bush"] = SPRITES[219];
+
+// 220: Sandstone
+SPRITES[220] = {
+  id: 220,
+  name: "Sandstone",
+  colors: {
+    "s": "#ffecb3", // Pale top sand
+    "m": "#ffe082", // Mid sandstone
+    "d": "#ffd54f", // Dark band
+    "b": "#d7ccc8"  // Faint stratum
+  },
+  pixels: [
+    "sssssss",
+    "mmmmmmm",
+    "ddddddd",
+    "sbsbsbs",
+    "mmmmmmm",
+    "ddddddd",
+    "bbbbbbb"
+  ]
+};
+SPRITES["sandstone"] = SPRITES[220];
+
 // ==============================================================================
 // SPRITE RENDERING ENGINE & HELPERS
 // ==============================================================================

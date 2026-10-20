@@ -214,7 +214,17 @@
 
         // Scrap Material & Blocks
         'scrap': 211, 'metal_scrap': 211, 'iron_scrap': 211,
-        'scrap_block': 212, 'block_of_scrap': 212
+        'scrap_block': 212, 'block_of_scrap': 212,
+
+        // Construction, Hammer, Doors & Desert
+        'hammer': 213, 'iron_hammer': 213, 'stone_hammer': 213, 'wood_hammer': 213,
+        'door': 214, 'wooden_door': 214,
+        'door_bottom': 215,
+        'door_top': 216,
+        'trapdoor': 217, 'wooden_trapdoor': 217,
+        'cactus': 218,
+        'dead_bush': 219,
+        'sandstone': 220
     });
 
     /**
@@ -286,6 +296,26 @@
         { name: "Furnace (Cobble + Coal Infinite Craft)", inputs: ['cobble', 'coal'], output: 'furnace', count: 1 },
         { name: "Ladder (3 Sticks)", inputs: ['stick', 'stick', 'stick'], output: 'ladder', count: 3 },
         { name: "Ladder (Stack)", inputs: { stick: 3 }, output: 'ladder', count: 3 },
+
+        // Doors, Trapdoors & Construction
+        { name: "Door (Shaped Vertical Left)", shaped: true, slots: { 0: 'planks', 3: 'planks', 5: 'planks' }, output: 'door', count: 1 },
+        { name: "Door (Shaped Vertical Right)", shaped: true, slots: { 1: 'planks', 3: 'planks', 6: 'planks' }, output: 'door', count: 1 },
+        { name: "Door (Planks + Stick)", inputs: ['planks', 'planks', 'planks', 'stick'], output: 'door', count: 2 },
+        { name: "Door (Planks + Iron)", inputs: ['planks', 'planks', 'iron_ingot'], output: 'door', count: 2 },
+        { name: "Trapdoor (Shaped Horizontal)", shaped: true, slots: { 2: 'planks', 3: 'planks', 4: 'planks' }, output: 'trapdoor', count: 2 },
+        { name: "Trapdoor (Stick + 2 Planks)", inputs: ['stick', 'planks', 'planks'], output: 'trapdoor', count: 2 },
+        { name: "Trapdoor (Stick + 3 Planks)", inputs: ['stick', 'planks', 'planks', 'planks'], output: 'trapdoor', count: 3 },
+        { name: "Sandstone (4 Sand)", inputs: ['sand', 'sand', 'sand', 'sand'], output: 'sandstone', count: 1 },
+        { name: "Sandstone (Stack)", inputs: { sand: 4 }, output: 'sandstone', count: 1 },
+        { name: "Sandstone (2 Sand Infinite Craft)", inputs: ['sand', 'sand'], output: 'sandstone', count: 1 },
+
+        // Hammer (Transforms blocks to wall backdrops and back)
+        { name: "Hammer (Cobble + Sticks)", inputs: ['cobble', 'cobble', 'cobble', 'stick', 'stick'], output: 'hammer', count: 1 },
+        { name: "Hammer (Iron + Sticks)", inputs: ['iron_ingot', 'iron_ingot', 'iron_ingot', 'stick', 'stick'], output: 'hammer', count: 1 },
+        { name: "Hammer (Wood Planks + Sticks)", inputs: ['planks', 'planks', 'planks', 'stick', 'stick'], output: 'hammer', count: 1 },
+        { name: "Hammer (Cobble Stack)", inputs: { cobble: 3, stick: 2 }, output: 'hammer', count: 1 },
+        { name: "Hammer (Iron Stack)", inputs: { iron_ingot: 3, stick: 2 }, output: 'hammer', count: 1 },
+        { name: "Hammer (Planks Stack)", inputs: { planks: 3, stick: 2 }, output: 'hammer', count: 1 },
 
         // ---------------------------------------------------------------------------------
         // 3. TOOLS & WEAPONS (Wood, Stone, Iron, Diamond, Zanite)
@@ -556,6 +586,10 @@
             }
             if (!hasEnough) continue;
 
+            // Strict condition C: Occupied slots must not exceed required ingredients
+            // (Prevents extra occupied slots from matching smaller recipes, e.g. 3 planks matching a 2-plank stick recipe)
+            if (occupied.length > reqTotalSlots) continue;
+
             // Total items currently on grid vs items required by this recipe
             let totalGridItems = 0;
             for (const c of Object.values(countsById)) totalGridItems += c;
@@ -671,5 +705,18 @@
     root.addRecipe = addRecipe;
     root.removeRecipe = removeRecipe;
     root.getRecipes = getRecipes;
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            ITEM_ALIASES,
+            resolveItemId,
+            HEX_RECIPES: RECIPES,
+            findHexRecipe,
+            consumeHexRecipe,
+            addRecipe,
+            removeRecipe,
+            getRecipes
+        };
+    }
 
 })(typeof window !== 'undefined' ? window : globalThis);
