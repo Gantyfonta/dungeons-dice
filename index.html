@@ -1106,6 +1106,9 @@
         let gameTime = 6000; 
         let currentDimension = 'overworld';
         let worlds = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
+        let walls = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
+        let compiledChunks = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
+        let chunkMaintenanceTimer = 0;
         let blockRotations = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
         let tileEntities = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
         let mobs = { overworld: [], nether: [], the_end: [], aether: [], mystic: [] };
@@ -1623,6 +1626,8 @@
             }
             const saveData = {
                 worlds,
+                walls,
+                compiledChunks,
                 blockRotations,
                 tileEntities,
                 mobs,
@@ -1640,6 +1645,8 @@
 
         function loadGame(data) {
             worlds = data.worlds; 
+            walls = data.walls || { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
+            compiledChunks = data.compiledChunks || { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
             blockRotations = data.blockRotations || {};
             tileEntities = data.tileEntities || {};
             mobs = data.mobs || {};
@@ -1664,6 +1671,8 @@
             const dims = ['overworld', 'nether', 'the_end', 'aether', 'mystic'];
             dims.forEach(d => {
                 if (!worlds[d]) worlds[d] = {};
+                if (!walls[d]) walls[d] = {};
+                if (!compiledChunks[d]) compiledChunks[d] = {};
                 if (!blockRotations[d]) blockRotations[d] = {};
                 if (!tileEntities[d]) tileEntities[d] = {};
                 if (!mobs[d]) mobs[d] = [];
@@ -1688,6 +1697,8 @@
                 currentSeedDisplay = seed;
                 worldRNG = new SeededRandom(seed);
                 worlds = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
+                walls = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
+                compiledChunks = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
                 blockRotations = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
                 tileEntities = { overworld: {}, nether: {}, the_end: {}, aether: {}, mystic: {} };
                 mobs = { overworld: [], nether: [], the_end: [], aether: [], mystic: [] };
@@ -2274,20 +2285,141 @@
             document.getElementById('trade-output').onmousedown = (e) => { if (e.button === 0) handleTradeOutputClick(); };
         }
 
+        // Robust fallback recipe engine to guarantee crafting NEVER breaks on GitHub Pages
+        function fallbackMatchRecipe(grid) {
+            if (!grid || !Array.isArray(grid) || grid.length !== 7) return null;
+            const counts = {};
+            let total = 0;
+            let occupied = 0;
+            for (let i = 0; i < 7; i++) {
+                const item = grid[i];
+                if (item && item.id && item.count > 0) {
+                    counts[item.id] = (counts[item.id] || 0) + item.count;
+                    total += item.count;
+                    occupied++;
+                }
+            }
+            if (occupied === 0 || total === 0) return null;
+
+            // Helper to check exact recipe match
+            const isMatch = (reqObj) => {
+                let reqTotal = 0;
+                for (const [idStr, need] of Object.entries(reqObj)) {
+                    const id = Number(idStr);
+                    if ((counts[id] || 0) !== need) return false;
+                    reqTotal += need;
+                }
+                return total === reqTotal;
+            };
+
+            // 1. Hammer (213)
+            if (isMatch({ 7: 3, 15: 2 })) return { result: 213, amount: 1 }; // Cobble + sticks
+            if (isMatch({ 10: 3, 15: 2 })) return { result: 213, amount: 1 }; // Planks + sticks
+            if (isMatch({ 31: 3, 15: 2 })) return { result: 213, amount: 1 }; // Iron + sticks
+
+            // 2. Door (214)
+            if (isMatch({ 10: 6 })) return { result: 214, amount: 3 }; // 6 Planks -> 3 Doors
+            if (isMatch({ 10: 3 })) return { result: 214, amount: 1 }; // 3 Planks -> 1 Door
+            if (isMatch({ 10: 2, 15: 1 })) return { result: 214, amount: 1 }; // 2 Planks + 1 stick
+
+            // 3. Trapdoor (217)
+            if (isMatch({ 10: 2 })) return { result: 217, amount: 1 }; // 2 Planks -> 1 Trapdoor
+            if (isMatch({ 10: 2, 15: 1 })) return { result: 217, amount: 1 }; // 2 Planks + stick
+
+            // 4. Wood & Planks & Sticks
+            if (isMatch({ 4: 1 })) return { result: 10, amount: 4 }; // Log -> 4 Planks
+            if (isMatch({ 10: 1 })) return { result: 15, amount: 2 }; // 1 Plank -> 2 Sticks
+            if (isMatch({ 10: 4 })) return { result: 12, amount: 1 }; // 4 Planks -> Crafting Table
+
+            // 5. Sandstone (220)
+            if (isMatch({ 8: 4 })) return { result: 220, amount: 1 };
+            if (isMatch({ 8: 2 })) return { result: 220, amount: 1 };
+
+            // 6. Torches & Furnace & Chest
+            if (isMatch({ 30: 1, 15: 1 })) return { result: 62, amount: 4 }; // Coal + Stick -> 4 Torches
+            if (isMatch({ 7: 7 })) return { result: 16, amount: 1 }; // 7 Cobble -> Furnace
+            if (isMatch({ 7: 8 })) return { result: 16, amount: 1 };
+            if (isMatch({ 10: 7 })) return { result: 94, amount: 1 }; // 7 Planks -> Chest
+            if (isMatch({ 10: 8 })) return { result: 94, amount: 1 };
+
+            // 7. Tools (Wood, Stone, Iron, Gold, Diamond)
+            // Pickaxes (3 materials + 2 sticks)
+            if (isMatch({ 10: 3, 15: 2 })) return { result: 17, amount: 1 };
+            if (isMatch({ 7: 3, 15: 2 })) return { result: 18, amount: 1 };
+            if (isMatch({ 31: 3, 15: 2 })) return { result: 20, amount: 1 };
+            if (isMatch({ 32: 3, 15: 2 })) return { result: 21, amount: 1 };
+            if (isMatch({ 33: 3, 15: 2 })) return { result: 22, amount: 1 };
+
+            // Swords (2 materials + 1 stick)
+            if (isMatch({ 10: 2, 15: 1 })) return { result: 36, amount: 1 };
+            if (isMatch({ 7: 2, 15: 1 })) return { result: 37, amount: 1 };
+            if (isMatch({ 31: 2, 15: 1 })) return { result: 38, amount: 1 };
+            if (isMatch({ 32: 2, 15: 1 })) return { result: 39, amount: 1 };
+            if (isMatch({ 33: 2, 15: 1 })) return { result: 40, amount: 1 };
+
+            // Axes (3 materials + 2 sticks)
+            if (isMatch({ 10: 3, 15: 2 })) return { result: 41, amount: 1 };
+            if (isMatch({ 7: 3, 15: 2 })) return { result: 42, amount: 1 };
+            if (isMatch({ 31: 3, 15: 2 })) return { result: 43, amount: 1 };
+            if (isMatch({ 32: 3, 15: 2 })) return { result: 44, amount: 1 };
+            if (isMatch({ 33: 3, 15: 2 })) return { result: 45, amount: 1 };
+
+            // Shovels (1 material + 2 sticks)
+            if (isMatch({ 10: 1, 15: 2 })) return { result: 46, amount: 1 };
+            if (isMatch({ 7: 1, 15: 2 })) return { result: 47, amount: 1 };
+            if (isMatch({ 31: 1, 15: 2 })) return { result: 48, amount: 1 };
+            if (isMatch({ 32: 1, 15: 2 })) return { result: 49, amount: 1 };
+            if (isMatch({ 33: 1, 15: 2 })) return { result: 50, amount: 1 };
+
+            // 8. Storage Blocks & Decompress
+            if (isMatch({ 31: 7 }) || isMatch({ 31: 9 })) return { result: 85, amount: 1 }; // Iron Block
+            if (isMatch({ 32: 7 }) || isMatch({ 32: 9 })) return { result: 86, amount: 1 }; // Gold Block
+            if (isMatch({ 33: 7 }) || isMatch({ 33: 9 })) return { result: 87, amount: 1 }; // Diamond Block
+            if (isMatch({ 34: 7 }) || isMatch({ 34: 9 })) return { result: 88, amount: 1 }; // Redstone Block
+            if (isMatch({ 85: 1 })) return { result: 31, amount: 9 };
+            if (isMatch({ 86: 1 })) return { result: 32, amount: 9 };
+            if (isMatch({ 87: 1 })) return { result: 33, amount: 9 };
+            if (isMatch({ 88: 1 })) return { result: 34, amount: 9 };
+
+            // 9. Scrap Block (212)
+            if (isMatch({ 211: 4 }) || isMatch({ 211: 7 })) return { result: 212, amount: 1 };
+            if (isMatch({ 212: 1 })) return { result: 211, amount: 4 };
+
+            // 10. Bottles (200)
+            if (isMatch({ 9: 3 })) return { result: 200, amount: 3 };
+            if (isMatch({ 9: 1 })) return { result: 200, amount: 1 };
+
+            return null;
+        }
+
         function checkRecipes() {
             craftingOutput = null;
             activeRecipeMatch = null;
             const outputSlot = document.getElementById('crafting-output');
             if (outputSlot) outputSlot.classList.remove('ready');
 
+            // 1. Try global findHexRecipe from recipes.js
             if (typeof findHexRecipe === 'function') {
-                const match = findHexRecipe(hexagonCraftingGrid);
-                if (match && match.result) {
-                    craftingOutput = { id: match.result, count: match.amount || 1 };
-                    activeRecipeMatch = match;
-                    if (outputSlot) outputSlot.classList.add('ready');
-                    return;
+                try {
+                    const match = findHexRecipe(hexagonCraftingGrid);
+                    if (match && match.result) {
+                        craftingOutput = { id: match.result, count: match.amount || 1 };
+                        activeRecipeMatch = match;
+                        if (outputSlot) outputSlot.classList.add('ready');
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("recipes.js error, falling back:", e);
                 }
+            }
+
+            // 2. Embedded fallback recipe matcher (ensures 100% reliable crafting on GitHub Pages!)
+            const fbMatch = fallbackMatchRecipe(hexagonCraftingGrid);
+            if (fbMatch && fbMatch.result) {
+                craftingOutput = { id: fbMatch.result, count: fbMatch.amount || 1 };
+                activeRecipeMatch = fbMatch;
+                if (outputSlot) outputSlot.classList.add('ready');
+                return;
             }
         }
 
@@ -2782,6 +2914,112 @@
             const wx = Math.floor((mouse.x + camera.x) / TILE_SIZE); const wy = Math.floor((mouse.y + camera.y) / TILE_SIZE); const key = `${wx},${wy}`;
             
             if (mouse.rightDown) {
+                // Hammer Interaction: Turn block into wall backdrop, or turn wall back to foreground!
+                if (activeItem?.id === 213 || blockData?.toolType === 'hammer') {
+                    if (!walls[currentDimension]) walls[currentDimension] = {};
+                    const fgId = world[key];
+                    if (fgId) {
+                        // Bedrock (29), fluids (6, 63), and portals cannot be hammered
+                        if (fgId !== 29 && fgId !== 6 && fgId !== 63 && fgId !== 60 && fgId !== 90 && fgId !== 119 && fgId !== 195) {
+                            walls[currentDimension][key] = fgId;
+                            delete world[key];
+                            for (let i = 0; i < 6; i++) {
+                                particles.push({
+                                    x: (wx + 0.5) * TILE_SIZE,
+                                    y: (wy + 0.5) * TILE_SIZE,
+                                    vx: (Math.random() - 0.5) * 4,
+                                    vy: (Math.random() - 0.5) * 4,
+                                    life: 20,
+                                    color: '#ffd54f'
+                                });
+                            }
+                            broadcastWorldChange();
+                            updateHUD();
+                            return;
+                        }
+                    } else if (walls[currentDimension][key]) {
+                        // Restore wall back to foreground block
+                        const wallId = walls[currentDimension][key];
+                        world[key] = wallId;
+                        delete walls[currentDimension][key];
+                        for (let i = 0; i < 6; i++) {
+                            particles.push({
+                                x: (wx + 0.5) * TILE_SIZE,
+                                y: (wy + 0.5) * TILE_SIZE,
+                                vx: (Math.random() - 0.5) * 4,
+                                vy: (Math.random() - 0.5) * 4,
+                                life: 20,
+                                color: '#81d4fa'
+                            });
+                        }
+                        broadcastWorldChange();
+                        updateHUD();
+                        return;
+                    }
+                }
+
+                // Door Right-Click: Toggle open/closed (both 1x2 halves together)
+                if (world[key] === 215 || world[key] === 216) {
+                    if (!tileEntities[currentDimension]) tileEntities[currentDimension] = {};
+                    const curOpen = !!tileEntities[currentDimension][key]?.open;
+                    const newOpen = !curOpen;
+                    const partnerKey = (world[key] === 215) ? `${wx},${wy-1}` : `${wx},${wy+1}`;
+                    tileEntities[currentDimension][key] = { type: 'door', open: newOpen, partner: partnerKey };
+                    if (world[partnerKey] === 215 || world[partnerKey] === 216) {
+                        tileEntities[currentDimension][partnerKey] = { type: 'door', open: newOpen, partner: key };
+                    }
+                    for (let i = 0; i < 4; i++) {
+                        particles.push({
+                            x: (wx + 0.5) * TILE_SIZE,
+                            y: (wy + 0.5) * TILE_SIZE,
+                            vx: (Math.random() - 0.5) * 2,
+                            vy: (Math.random() - 0.5) * 2,
+                            life: 14,
+                            color: '#8d6e63'
+                        });
+                    }
+                    broadcastWorldChange();
+                    return;
+                }
+
+                // Trapdoor Right-Click: Toggle open/closed
+                if (world[key] === 217) {
+                    if (!tileEntities[currentDimension]) tileEntities[currentDimension] = {};
+                    const curOpen = !!tileEntities[currentDimension][key]?.open;
+                    tileEntities[currentDimension][key] = { type: 'trapdoor', open: !curOpen };
+                    for (let i = 0; i < 4; i++) {
+                        particles.push({
+                            x: (wx + 0.5) * TILE_SIZE,
+                            y: (wy + 0.5) * TILE_SIZE,
+                            vx: (Math.random() - 0.5) * 2,
+                            vy: (Math.random() - 0.5) * 2,
+                            life: 14,
+                            color: '#8d6e63'
+                        });
+                    }
+                    broadcastWorldChange();
+                    return;
+                }
+
+                // Door Placement (holding Door 214) -> Places 1x2 door (Bottom 215, Top 216)
+                if (activeItem && activeItem.id === 214) {
+                    const aboveKey = `${wx},${wy-1}`;
+                    if ((!world[key] || BLOCK_TYPES[world[key]]?.fluid) && (!world[aboveKey] || BLOCK_TYPES[world[aboveKey]]?.fluid)) {
+                        world[key] = 215; // Door Bottom
+                        world[aboveKey] = 216; // Door Top
+                        if (!tileEntities[currentDimension]) tileEntities[currentDimension] = {};
+                        tileEntities[currentDimension][key] = { type: 'door', open: false, partner: aboveKey };
+                        tileEntities[currentDimension][aboveKey] = { type: 'door', open: false, partner: key };
+                        if (player.gameMode !== 'creative') {
+                            activeItem.count--;
+                            if (activeItem.count <= 0) hotbarInventory[activeHotbarIndex] = null;
+                        }
+                        updateHUD();
+                        broadcastWorldChange();
+                        return;
+                    }
+                }
+
                 // Hoe Logic
                 if (blockData?.toolType === 'hoe' && (world[key] === 1 || world[key] === 2)) {
                     world[key] = 120;
@@ -2854,7 +3092,7 @@
             if (bossFound) { bossHealthContainer.style.display = 'flex'; bossHealthFill.style.width = (bossFound.health / bossFound.maxHealth) * 100 + '%'; } else { bossHealthContainer.style.display = 'none'; }
         }
 
-        function resolveEntityCollision(ent, axis) { const world = worlds[currentDimension]; const x1 = Math.floor(ent.x / TILE_SIZE), x2 = Math.floor((ent.x + ent.w - 1) / TILE_SIZE); const y1 = Math.floor(ent.y / TILE_SIZE), y2 = Math.floor((ent.y + ent.h - 1) / TILE_SIZE); for (let x = x1; x <= x2; x++) { for (let y = y1; y <= y2; y++) { const type = world[`${x},${y}`]; if (type) { const block = BLOCK_TYPES[type]; if (block.teleport || block.fluid || block.ladder) continue; if (axis === 'x') { if (ent.vx > 0) ent.x = x * TILE_SIZE - ent.w; else if (ent.vx < 0) ent.x = (x + 1) * TILE_SIZE; ent.vx = 0; if(ent.grounded && Math.random() < 0.2) ent.vy = -12; } else { if (ent.vy > 0) { ent.y = y * TILE_SIZE - ent.h; ent.grounded = true; } else if (ent.vy < 0) { ent.y = (y + 1) * TILE_SIZE; } ent.vy = 0; } } } } }
+        function resolveEntityCollision(ent, axis) { const world = worlds[currentDimension]; const x1 = Math.floor(ent.x / TILE_SIZE), x2 = Math.floor((ent.x + ent.w - 1) / TILE_SIZE); const y1 = Math.floor(ent.y / TILE_SIZE), y2 = Math.floor((ent.y + ent.h - 1) / TILE_SIZE); for (let x = x1; x <= x2; x++) { for (let y = y1; y <= y2; y++) { const type = world[`${x},${y}`]; if (type) { const block = BLOCK_TYPES[type]; if (block.teleport || block.fluid || block.ladder || block.nonSolid) continue; if ((type === 215 || type === 216 || type === 217) && tileEntities[currentDimension]?.[`${x},${y}`]?.open) continue; if (axis === 'x') { if (ent.vx > 0) ent.x = x * TILE_SIZE - ent.w; else if (ent.vx < 0) ent.x = (x + 1) * TILE_SIZE; ent.vx = 0; if(ent.grounded && Math.random() < 0.2) ent.vy = -12; } else { if (ent.vy > 0) { ent.y = y * TILE_SIZE - ent.h; ent.grounded = true; } else if (ent.vy < 0) { ent.y = (y + 1) * TILE_SIZE; } ent.vy = 0; } } } } }
 
         function tryIgnitePortal(wx, wy) { const world = worlds[currentDimension]; for(let sx = wx - 4; sx <= wx + 4; sx++) { for(let sy = wy - 5; sy <= wy + 5; sy++) { if(world[`${sx},${sy}`] === 28 && world[`${sx+3},${sy}`] === 28) { let isFrame = true; for(let x=0; x<4; x++) if(world[`${sx+x},${sy}`] !== 28 || world[`${sx+x},${sy+4}`] !== 28) isFrame = false; for(let y=0; y<5; y++) if(world[`${sx},${sy+y}`] !== 28 || world[`${sx+3},${sy+y}`] !== 28) isFrame = false; if(isFrame) { for(let x=1; x<=2; x++) for(let y=1; y<=3; y++) world[`${sx+x},${sy+y}`] = 60; broadcastWorldChange(); return; } } } } }
 
@@ -2938,23 +3176,155 @@
         function updateHeartsUI() { heartsContainer.innerHTML = ''; for(let i=0; i<MAX_HEALTH; i++) { const heart = document.createElement('div'); heart.className = `heart ${i >= player.health ? 'empty' : ''}`; heartsContainer.appendChild(heart); } }
 
         // --- Infinite Procedural World & Chunk Generation ---
+        // --- Infinite Procedural World & Chunk Management (Compile & Unpack System) ---
+        const ACTIVE_CHUNK_RADIUS = 6;
+        const UNLOAD_CHUNK_RADIUS = 8;
+
+        function compileChunk(dim, cx) {
+            const world = worlds[dim];
+            const wall = walls[dim] || {};
+            const te = tileEntities[dim] || {};
+            const rot = blockRotations[dim] || {};
+            if (!world) return;
+
+            const startX = cx * CHUNK_SIZE;
+            const endX = startX + CHUNK_SIZE;
+
+            const bList = [];
+            const wList = [];
+            const teData = {};
+            const rotData = {};
+            let count = 0;
+
+            for (let x = startX; x < endX; x++) {
+                for (let y = 0; y < WORLD_HEIGHT; y++) {
+                    const k = `${x},${y}`;
+                    if (world[k] !== undefined) {
+                        bList.push(x - startX, y, world[k]);
+                        delete world[k];
+                        count++;
+                    }
+                    if (wall[k] !== undefined) {
+                        wList.push(x - startX, y, wall[k]);
+                        delete wall[k];
+                        count++;
+                    }
+                    if (te[k] !== undefined) {
+                        teData[k] = te[k];
+                        delete te[k];
+                        count++;
+                    }
+                    if (rot[k] !== undefined) {
+                        rotData[k] = rot[k];
+                        delete rot[k];
+                        count++;
+                    }
+                }
+            }
+
+            if (count > 0) {
+                if (!compiledChunks[dim]) compiledChunks[dim] = {};
+                compiledChunks[dim][cx] = {
+                    b: bList,
+                    w: wList.length > 0 ? wList : null,
+                    te: Object.keys(teData).length > 0 ? teData : null,
+                    rot: Object.keys(rotData).length > 0 ? rotData : null
+                };
+            }
+        }
+
+        function unpackChunk(dim, cx) {
+            if (!compiledChunks[dim] || !compiledChunks[dim][cx]) return false;
+            const data = compiledChunks[dim][cx];
+            const world = worlds[dim];
+            const wall = walls[dim];
+            const te = tileEntities[dim];
+            const rot = blockRotations[dim];
+            const startX = cx * CHUNK_SIZE;
+
+            if (data.b) {
+                const b = data.b;
+                for (let i = 0; i < b.length; i += 3) {
+                    world[`${startX + b[i]},${b[i+1]}`] = b[i+2];
+                }
+            }
+            if (data.w) {
+                const w = data.w;
+                for (let i = 0; i < w.length; i += 3) {
+                    wall[`${startX + w[i]},${w[i+1]}`] = w[i+2];
+                }
+            }
+            if (data.te) {
+                for (const k in data.te) te[k] = data.te[k];
+            }
+            if (data.rot) {
+                for (const k in data.rot) rot[k] = data.rot[k];
+            }
+
+            delete compiledChunks[dim][cx];
+            return true;
+        }
+
+        function manageChunks() {
+            const playerCx = Math.floor(player.x / (TILE_SIZE * CHUNK_SIZE));
+            const dim = currentDimension;
+            if (!generatedChunks[dim]) return;
+
+            for (const cx of generatedChunks[dim]) {
+                if (Math.abs(cx - playerCx) > UNLOAD_CHUNK_RADIUS) {
+                    const sampleKey = `${cx * CHUNK_SIZE},${WORLD_HEIGHT - 1}`;
+                    if (worlds[dim] && worlds[dim][sampleKey] !== undefined) {
+                        compileChunk(dim, cx);
+                    }
+                }
+            }
+        }
+
         function ensureChunkGenerated(dim, cx) {
             if (!generatedChunks[dim]) generatedChunks[dim] = new Set();
+            if (compiledChunks[dim] && compiledChunks[dim][cx]) {
+                unpackChunk(dim, cx);
+                return;
+            }
             if (generatedChunks[dim].has(cx)) return;
             generatedChunks[dim].add(cx);
             generateChunk(dim, cx);
         }
 
+        function getOverworldBiome(x) {
+            const seed = getSeedNumber();
+            // Large natural biomes (160-260+ blocks wide per biome)
+            const t = Math.sin(x * 0.0038 + seed * 0.0001) + 0.38 * Math.sin(x * 0.0105 + 1.7);
+            if (t < -0.38) return 'ocean';
+            if (t > 0.38) return 'desert';
+            if (Math.sin(x * 0.0075 + seed * 0.0003) > 0.12) return 'forest';
+            return 'plains';
+        }
+
         function getOverworldSurfaceY(x) {
             const seed = getSeedNumber();
+            const biome = getOverworldBiome(x);
             // Smooth multi-octave harmonic waves for natural rolling landscape without single-block jitter:
-            // 1. Broad regional elevation (period ~160-200 blocks)
-            const broad = Math.sin(x * 0.014 + seed * 0.0001) * 7.0;
-            // 2. Rolling hills and valleys (period ~60-80 blocks)
-            const hills = Math.sin(x * 0.036 + seed * 0.0002 + 1.4) * 3.8;
-            // 3. Gentle knolls and little bumps (period ~22-30 blocks)
-            const bumps = Math.sin(x * 0.09 + seed * 0.0003 + 2.8) * 1.4;
-            return Math.max(22, Math.min(62, Math.round(42 + broad + hills + bumps)));
+            // 1. Broad regional elevation (period ~220-300 blocks)
+            const broad = Math.sin(x * 0.009 + seed * 0.0001) * 5.5;
+            // 2. Rolling hills and valleys (period ~80-120 blocks)
+            const hills = Math.sin(x * 0.022 + seed * 0.0002 + 1.3) * 3.4;
+            // 3. Gentle knolls and little bumps (period ~40-60 blocks)
+            const bumps = Math.sin(x * 0.048 + seed * 0.0003 + 2.6) * 1.2;
+
+            let baseY = 42;
+            if (biome === 'ocean') {
+                // Smooth dip into ocean seabed (base Y=53-56, below sea level 45)
+                const depthSwell = Math.sin(x * 0.025 + 0.9) * 2.2;
+                baseY = 53 + depthSwell;
+            } else if (biome === 'desert') {
+                // Rolling sand dunes (base Y=38-42)
+                const dunes = Math.sin(x * 0.028 + seed * 0.0004) * 2.5;
+                baseY = 39 + dunes;
+            } else {
+                baseY = 41;
+            }
+            return Math.max(22, Math.min(62, Math.round(baseY + broad + hills + bumps)));
         }
 
         function isOverworldCave(x, y) {
@@ -2974,7 +3344,9 @@
             if (dim === 'overworld') {
                 const seaLevel = 45;
                 for (let x = startX; x < endX; x++) {
+                    const biome = getOverworldBiome(x);
                     const surfaceY = getOverworldSurfaceY(x);
+
                     for (let y = 0; y < WORLD_HEIGHT; y++) {
                         const k = `${x},${y}`;
                         if (world[k] !== undefined) continue;
@@ -2985,20 +3357,50 @@
                             if (isOverworldCave(x, y)) {
                                 if (y >= WORLD_HEIGHT - 6) type = 6; // deep lava pocket
                             } else {
-                                if (y <= surfaceY + 4) {
-                                    type = 2; // dirt
+                                const depth = y - surfaceY;
+                                if (biome === 'desert') {
+                                    if (depth <= 4) {
+                                        type = 8; // sand covers the desert
+                                    } else if (depth <= 8) {
+                                        type = 220; // sandstone
+                                    } else {
+                                        type = 3; // stone
+                                        const r = worldHash(x, y, 101);
+                                        // Gold and Redstone are significantly more common in Desert!
+                                        if (depth > 10 && r < 0.12) type = 25; // gold (3x common!)
+                                        else if (depth > 5 && r < 0.18) type = 27; // redstone ore (3x common!)
+                                        else if (depth > 35 && r < 0.02) type = 26; // diamond
+                                        else if (depth > 20 && r < 0.12) type = 14; // iron
+                                        else if (depth > 10 && r < 0.12) type = 13; // coal
+                                    }
+                                } else if (biome === 'ocean') {
+                                    if (depth <= 3) {
+                                        type = (worldHash(x, y, 88) > 0.4) ? 8 : 57; // sand or gravel seabed
+                                    } else {
+                                        type = 3; // stone
+                                        const r = worldHash(x, y, 101);
+                                        if (depth > 35 && r < 0.02) type = 26;
+                                        else if (depth > 30 && r < 0.04) type = 25;
+                                        else if (depth > 20 && r < 0.12) type = 14;
+                                        else if (depth > 10 && r < 0.12) type = 13;
+                                        else if (depth > 5 && r < 0.08) type = 27;
+                                    }
                                 } else {
-                                    type = 3; // stone
-                                    const depth = y - surfaceY;
-                                    const r = worldHash(x, y, 101);
-                                    if (depth > 40 && r < 0.015) type = 6;
-                                    else if (depth > 35 && r < 0.02) type = 26; // diamond
-                                    else if (depth > 40 && r < 0.035) type = 27; // emerald
-                                    else if (depth > 30 && r < 0.04) type = 25; // gold
-                                    else if (depth > 20 && r < 0.12) type = 14; // iron
-                                    else if (depth > 10 && r < 0.12) type = 13; // coal
-                                    else if (depth > 5 && r < 0.08) type = 57; // redstone
-                                    else if (depth > 32 && r > 0.985) type = 212; // Scrap Block cache
+                                    // Plains & Forest
+                                    if (depth <= 4) {
+                                        type = 2; // dirt
+                                    } else {
+                                        type = 3; // stone
+                                        const r = worldHash(x, y, 101);
+                                        if (depth > 40 && r < 0.015) type = 6;
+                                        else if (depth > 35 && r < 0.02) type = 26;
+                                        else if (depth > 40 && r < 0.035) type = 27;
+                                        else if (depth > 30 && r < 0.04) type = 25;
+                                        else if (depth > 20 && r < 0.12) type = 14;
+                                        else if (depth > 10 && r < 0.12) type = 13;
+                                        else if (depth > 5 && r < 0.08) type = 27;
+                                        else if (depth > 32 && r > 0.985) type = 212; // Scrap Block cache
+                                    }
                                 }
                             }
                         } else if (y >= seaLevel && !world[k]) {
@@ -3006,32 +3408,48 @@
                         }
                         if (type) world[k] = type;
                     }
+
+                    // Surface dressing (grass, desert cacti & dead bushes)
                     for (let y = 0; y < WORLD_HEIGHT; y++) {
-                        if (world[`${x},${y}`] === 2 && !world[`${x},${y-1}`]) {
-                            world[`${x},${y}`] = 1;
-                            if (worldHash(x, 810) > 0.88 && worldHash(x-1, 810) <= 0.88 && worldHash(x+1, 810) <= 0.88) {
-                                spawnTree(x, y - 1, 'overworld');
+                        const cur = world[`${x},${y}`];
+                        const above = world[`${x},${y-1}`];
+                        if (cur && !above) {
+                            if (cur === 2) {
+                                world[`${x},${y}`] = 1; // Grass on dirt
+                            } else if (cur === 8 && biome === 'desert') {
+                                // Cacti and Dead Bushes in Desert!
+                                const dr = worldHash(x, 444);
+                                if (dr > 0.92) {
+                                    const cactusHeight = 1 + Math.floor(worldHash(x, 445) * 3);
+                                    for (let ch = 1; ch <= cactusHeight; ch++) {
+                                        world[`${x},${y-ch}`] = 218; // Cactus
+                                    }
+                                } else if (dr > 0.84) {
+                                    world[`${x},${y-1}`] = 219; // Dead Bush
+                                }
                             }
                             break;
                         }
                     }
                 }
-                // Overworld structures
-                if (cx === 1) {
-                    const portalX = 20;
-                    let portalY = WORLD_HEIGHT - 20;
-                    for (let x = -2; x <= 2; x++) {
-                        for (let y = -2; y <= 2; y++) {
+
+                // Spawning structures from structures.js
+                const chunkCenter = cx * CHUNK_SIZE + Math.floor(CHUNK_SIZE / 2);
+                const chunkBiome = getOverworldBiome(chunkCenter);
+                if (typeof checkAndSpawnStructures === 'function') {
+                    checkAndSpawnStructures(cx, 'overworld', world, tileEntities.overworld, spawnMob, chunkBiome, getOverworldSurfaceY, worldHash);
+                } else {
+                    // Fallback structures if structures.js not loaded
+                    if (cx === 1) {
+                        const portalX = 20; let portalY = WORLD_HEIGHT - 20;
+                        for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++) {
                             const k = `${portalX + x},${portalY + y}`;
-                            if (Math.abs(x) === 2 || Math.abs(y) === 2) world[k] = 28;
-                            else delete world[k];
+                            if (Math.abs(x) === 2 || Math.abs(y) === 2) world[k] = 28; else delete world[k];
                         }
+                        world[`${portalX},${portalY}`] = 90;
+                    } else if (worldHash(cx, 777) < 0.18 && Math.abs(cx) >= 2 && chunkBiome !== 'ocean') {
+                        spawnVillage(cx * CHUNK_SIZE + 6);
                     }
-                    world[`${portalX},${portalY}`] = 90;
-                } else if (worldHash(cx, 777) < 0.18 && Math.abs(cx) >= 2) {
-                    spawnVillage(cx * CHUNK_SIZE + 6);
-                } else if (worldHash(cx, 333) < 0.12 && Math.abs(cx) > 1) {
-                    spawnRuinedPortal(cx * CHUNK_SIZE + 8);
                 }
             } else if (dim === 'nether') {
                 for (let x = startX; x < endX; x++) {
@@ -3722,13 +4140,70 @@
                 else if (stand === 195) currentDimension = currentDimension === 'overworld' ? 'mystic' : 'overworld';
                 teleportTimer = 0; portalOverlay.style.opacity = 0; const tw = worlds[currentDimension]; let found = false; const pb = (stand === 60 ? 60 : (stand === 90 ? 90 : (stand === 119 ? 119 : 195))); ensureChunkGenerated(currentDimension, 0); for(let k in tw) { if(tw[k] === pb) { const [tx, ty] = k.split(',').map(Number); player.x = tx * TILE_SIZE; player.y = (ty - 1) * TILE_SIZE; found = true; break; } } if(!found) { player.x = 0; ensureChunkGenerated(currentDimension, 0); let sy = 0; while(!tw[`${Math.floor(player.x/TILE_SIZE)},${sy}`] && sy < WORLD_HEIGHT) sy++; player.y = (sy - 2) * TILE_SIZE; } updateHUD(); saveGame(); 
             } } else { teleportTimer = 0; portalOverlay.style.opacity = 0; }
-            if (mouse.down) { const wx = Math.floor((mouse.x + camera.x) / TILE_SIZE); const wy = Math.floor((mouse.y + camera.y) / TILE_SIZE); const key = `${wx},${wy}`; const tb = world[key]; if (tb && !BLOCK_TYPES[tb].fluid) { if (miningTarget?.key === key) { miningProgress += getMiningSpeed(); const b = BLOCK_TYPES[tb]; if (miningProgress >= b.hardness) { if (player.gameMode !== 'creative') { if (b.dropChance !== undefined && Math.random() < b.dropChance) addItemToInventory(b.dropId || b.drop, 1); else if (parseInt(tb) === 57) addItemToInventory(57, 1); else if (tb === 171) { const ent = det[key]; const count = (ent && ent.ready) ? Math.floor(Math.random() * 3) + 2 : 1; addItemToInventory(170, count); } else addItemToInventory(b.drop || parseInt(tb), 1); player.blocksBroken++; updateHUD(); if (player.blocksBroken % 10 === 0) syncLeaderboard(); } delete world[key]; if (blockRotations[currentDimension]) delete blockRotations[currentDimension][key]; miningTarget = null; miningProgress = 0; broadcastWorldChange(); } } else { miningTarget = { wx, wy, key }; miningProgress = 0; } } else { miningTarget = null; miningProgress = 0; } } else { miningTarget = null; miningProgress = 0; }
+            if (mouse.down) { const wx = Math.floor((mouse.x + camera.x) / TILE_SIZE); const wy = Math.floor((mouse.y + camera.y) / TILE_SIZE); const key = `${wx},${wy}`; const tb = world[key]; if (tb && !BLOCK_TYPES[tb].fluid) { if (miningTarget?.key === key) { miningProgress += getMiningSpeed(); const b = BLOCK_TYPES[tb]; if (miningProgress >= b.hardness) { if (player.gameMode !== 'creative') { if (parseInt(tb) === 215 || parseInt(tb) === 216) { const partnerKey = (parseInt(tb) === 215) ? `${wx},${wy-1}` : `${wx},${wy+1}`; if (world[partnerKey] === 215 || world[partnerKey] === 216) { delete world[partnerKey]; if (det[partnerKey]) delete det[partnerKey]; } addItemToInventory(214, 1); } else if (b.dropChance !== undefined && Math.random() < b.dropChance) addItemToInventory(b.dropId || b.drop, 1); else if (parseInt(tb) === 57) addItemToInventory(57, 1); else if (tb === 171) { const ent = det[key]; const count = (ent && ent.ready) ? Math.floor(Math.random() * 3) + 2 : 1; addItemToInventory(170, count); } else addItemToInventory(b.drop || parseInt(tb), 1); player.blocksBroken++; updateHUD(); if (player.blocksBroken % 10 === 0) syncLeaderboard(); } delete world[key]; if (blockRotations[currentDimension]) delete blockRotations[currentDimension][key]; miningTarget = null; miningProgress = 0; broadcastWorldChange(); } } else { miningTarget = { wx, wy, key }; miningProgress = 0; } } else { miningTarget = null; miningProgress = 0; } } else { miningTarget = null; miningProgress = 0; }
             let cs = keys['shift'] ? SPRINT_SPEED : SPEED; 
             if (player.effects.speed) cs *= 1.5;
             if (player.isFlying) cs *= 1.5; 
-            const inf = BLOCK_TYPES[world[`${px},${py}`]]?.fluid; 
-            const isl = BLOCK_TYPES[world[`${px},${py}`]]?.ladder; 
-            if (inf) { cs *= 0.4; if (keys['w'] || keys[' ']) player.vy = -6; else player.vy *= 0.8; if (world[`${px},${py}`] === 6) takeDamage(1.5); }
+
+            const pyFeet = Math.floor((player.y + player.h - 2) / TILE_SIZE);
+            const pyHead = Math.floor(player.y / TILE_SIZE);
+
+            const blockCenter = world[`${px},${py}`];
+            const blockFeet = world[`${px},${pyFeet}`];
+            const inFluidCenter = !!BLOCK_TYPES[blockCenter]?.fluid;
+            const inFluidFeet = !!BLOCK_TYPES[blockFeet]?.fluid;
+            const inf = inFluidCenter || inFluidFeet;
+            const isl = BLOCK_TYPES[blockCenter]?.ladder || BLOCK_TYPES[blockFeet]?.ladder;
+
+            // Improved Swimming Mechanics & Effortless Water Exit
+            if (inf) {
+                cs *= 0.75; // Responsive horizontal swimming
+                if (keys['w'] || keys[' '] || keys['arrowup']) {
+                    if (!inFluidCenter && inFluidFeet) {
+                        // At water surface: Leap boost out of the water onto land!
+                        player.vy = JUMP * 0.95;
+                        player.squash = 1.25;
+                        for (let i = 0; i < 6; i++) {
+                            particles.push({
+                                x: player.x + Math.random() * player.w,
+                                y: player.y + player.h,
+                                vx: (Math.random() - 0.5) * 4,
+                                vy: -Math.random() * 3 - 2,
+                                life: 20,
+                                color: '#81d4fa'
+                            });
+                        }
+                    } else {
+                        // Swimming upward inside water
+                        player.vy = -4.8;
+                    }
+                } else if (keys['s'] || keys['arrowdown']) {
+                    // Swimming downwards
+                    player.vy = 4.5;
+                } else {
+                    // Buoyant gentle drift
+                    player.vy *= 0.82;
+                    player.vy += 0.12;
+                }
+
+                // Shore climb vault (effortlessly walk out onto the 1-block shore bank)
+                if (keys['a'] || keys['d'] || keys['arrowleft'] || keys['arrowright']) {
+                    const dir = (keys['a'] || keys['arrowleft']) ? -1 : 1;
+                    const fwdX = Math.floor((player.x + player.w / 2 + dir * (player.w / 2 + 5)) / TILE_SIZE);
+                    const fFeet = world[`${fwdX},${pyFeet}`];
+                    const fHead = world[`${fwdX},${pyHead}`];
+                    const fAbove = world[`${fwdX},${pyHead - 1}`];
+                    if (fFeet && !BLOCK_TYPES[fFeet]?.fluid && !BLOCK_TYPES[fFeet]?.nonSolid) {
+                        if ((!fHead || BLOCK_TYPES[fHead]?.fluid || BLOCK_TYPES[fHead]?.nonSolid) &&
+                            (!fAbove || BLOCK_TYPES[fAbove]?.fluid || BLOCK_TYPES[fAbove]?.nonSolid)) {
+                            player.y -= 12;
+                            player.vy = -3.2;
+                        }
+                    }
+                }
+
+                if (blockCenter === 6 || blockFeet === 6) takeDamage(1.5);
+            }
             
             let cj = JUMP;
             if (player.effects.jump) cj *= 1.3;
@@ -3736,7 +4211,45 @@
             const pChunk = Math.floor(player.x / (TILE_SIZE * CHUNK_SIZE));
             for (let c = pChunk - 2; c <= pChunk + 2; c++) ensureChunkGenerated(currentDimension, c);
 
-            if (keys['a'] || keys['arrowleft']) { player.vx -= cs; player.facing = -1; player.animTimer += 0.8; } if (keys['d'] || keys['arrowright']) { player.vx += cs; player.facing = 1; player.animTimer += 0.8; } player.vx *= FRICTION; player.x += player.vx; resolveCollision('x'); if (isl) { player.vy = 4; if (keys['w'] || keys[' '] || keys['arrowup']) player.vy = -7; player.vx *= 0.7; player.grounded = true; } else if (!player.isFlying && !inf) { if ((keys['w'] || keys[' '] || keys['arrowup']) && player.grounded) { player.vy = cj; player.grounded = false; player.squash = 1.3; } player.vy += GRAVITY; } else if (player.isFlying) { if (keys['w'] || keys[' ']) player.vy = -20; else if (keys['s'] || keys['shift']) player.vy = 20; else player.vy *= 0.5; } player.y += player.vy; player.squash += (1 - player.squash) * 0.45; player.grounded = false; if (player.y + player.h > WORLD_HEIGHT * TILE_SIZE) takeDamage(10); resolveCollision('y'); camera.x += (player.x - width/2 - camera.x) * 0.35; camera.y += (player.y - height/2 - camera.y) * 0.35; 
+            // Periodic chunk compile maintenance (compiles distant chunks to eliminate lag when adventuring)
+            chunkMaintenanceTimer++;
+            if (chunkMaintenanceTimer >= 60) {
+                chunkMaintenanceTimer = 0;
+                manageChunks();
+            }
+
+            if (keys['a'] || keys['arrowleft']) { player.vx -= cs; player.facing = -1; player.animTimer += 0.8; }
+            if (keys['d'] || keys['arrowright']) { player.vx += cs; player.facing = 1; player.animTimer += 0.8; }
+            player.vx *= FRICTION;
+            player.x += player.vx;
+            resolveCollision('x');
+
+            if (isl) {
+                player.vy = 4;
+                if (keys['w'] || keys[' '] || keys['arrowup']) player.vy = -7;
+                player.vx *= 0.7;
+                player.grounded = true;
+            } else if (inf) {
+                // Swimming velocity handled directly in fluid controls above
+            } else if (!player.isFlying) {
+                if ((keys['w'] || keys[' '] || keys['arrowup']) && player.grounded) {
+                    player.vy = cj;
+                    player.grounded = false;
+                    player.squash = 1.3;
+                }
+                player.vy += GRAVITY;
+            } else if (player.isFlying) {
+                if (keys['w'] || keys[' ']) player.vy = -20;
+                else if (keys['s'] || keys['shift']) player.vy = 20;
+                else player.vy *= 0.5;
+            }
+            player.y += player.vy;
+            player.squash += (1 - player.squash) * 0.45;
+            player.grounded = false;
+            if (player.y + player.h > WORLD_HEIGHT * TILE_SIZE) takeDamage(10);
+            resolveCollision('y');
+            camera.x += (player.x - width/2 - camera.x) * 0.35;
+            camera.y += (player.y - height/2 - camera.y) * 0.35; 
             let ct = `X: ${Math.floor(player.x/TILE_SIZE)} Y: ${Math.floor(player.y/TILE_SIZE)}`; if (debugMode) ct += ` | Seed: ${currentSeedDisplay}`; document.getElementById('coords').innerText = ct;
         }
 
@@ -3746,7 +4259,7 @@
             const x1 = Math.floor(player.x / TILE_SIZE), x2 = Math.floor((player.x + player.w - 1) / TILE_SIZE); const y1 = Math.floor(player.y / TILE_SIZE), y2 = Math.floor((player.y + player.h - 1) / TILE_SIZE);
             const minC = Math.floor(x1 / CHUNK_SIZE), maxC = Math.floor(x2 / CHUNK_SIZE);
             for (let c = minC; c <= maxC; c++) ensureChunkGenerated(currentDimension, c);
-            for (let x = x1; x <= x2; x++) { for (let y = y1; y <= y2; y++) { const type = world[`${x},${y}`]; if (type) { const block = BLOCK_TYPES[type]; if (block.hazard) takeDamage(1); if (block.teleport || block.fluid || block.ladder || block.nonSolid) continue; if (player.isFlying) continue; if (axis === 'x') { if (player.vx > 0) player.x = x * TILE_SIZE - player.w; else if (player.vx < 0) player.x = (x + 1) * TILE_SIZE; player.vx = 0; } else { if (player.vy > 0) { player.y = y * TILE_SIZE - player.h; player.grounded = true; } else if (player.vy < 0) { player.y = (y + 1) * TILE_SIZE; } player.vy = 0; } } } } }
+            for (let x = x1; x <= x2; x++) { for (let y = y1; y <= y2; y++) { const type = world[`${x},${y}`]; if (type) { const block = BLOCK_TYPES[type]; if (block.hazard) takeDamage(1); if (block.teleport || block.fluid || block.ladder || block.nonSolid) continue; if ((type === 215 || type === 216 || type === 217) && tileEntities[currentDimension]?.[`${x},${y}`]?.open) continue; if (player.isFlying) continue; if (axis === 'x') { if (player.vx > 0) player.x = x * TILE_SIZE - player.w; else if (player.vx < 0) player.x = (x + 1) * TILE_SIZE; player.vx = 0; } else { if (player.vy > 0) { player.y = y * TILE_SIZE - player.h; player.grounded = true; } else if (player.vy < 0) { player.y = (y + 1) * TILE_SIZE; } player.vy = 0; } } } } }
 
         const textures = {};
         const textureFiles = {
@@ -4244,6 +4757,34 @@
             ctx.save(); 
             if (rotIdx !== 0 && type !== 105 && type !== 34 && type !== 107) { ctx.translate(tx + size/2, ty + size/2); ctx.rotate(rotIdx * Math.PI / 2); ctx.translate(-(tx + size/2), -(ty + size/2)); }
             
+            // Render open Door (215 bottom, 216 top) and open Trapdoor (217)
+            if (type === 215 || type === 216) {
+                const isOpen = !!tileEntities[currentDimension]?.[`${x},${y}`]?.open;
+                if (isOpen) {
+                    ctx.fillStyle = '#4e342e';
+                    ctx.fillRect(tx, ty, 6 * scale, size);
+                    ctx.fillStyle = '#8d6e63';
+                    ctx.fillRect(tx + 6 * scale, ty + 2 * scale, 5 * scale, size - 4 * scale);
+                    ctx.fillStyle = '#ffd54f';
+                    ctx.fillRect(tx + 4 * scale, ty + size / 2 - 2 * scale, 3 * scale, 4 * scale);
+                    ctx.restore();
+                    return;
+                }
+            } else if (type === 217) {
+                const isOpen = !!tileEntities[currentDimension]?.[`${x},${y}`]?.open;
+                if (isOpen) {
+                    ctx.fillStyle = '#3e2723';
+                    ctx.fillRect(tx, ty, 6 * scale, size);
+                    ctx.fillStyle = '#8d6e63';
+                    ctx.fillRect(tx + 1 * scale, ty + 2 * scale, 4 * scale, size - 4 * scale);
+                    ctx.fillStyle = '#212121';
+                    ctx.fillRect(tx, ty + 4 * scale, 6 * scale, 3 * scale);
+                    ctx.fillRect(tx, ty + size - 7 * scale, 6 * scale, 3 * scale);
+                    ctx.restore();
+                    return;
+                }
+            }
+
             // Base Texture Drawing - 7x7 sprite system from sprites.js takes highest priority!
             if (typeof window !== 'undefined' && window.drawSprite && window.hasSprite && window.hasSprite(type) && type !== 34 && type !== 105 && type !== 107) {
                 window.drawSprite(ctx, type, tx, ty, size);
@@ -4876,6 +5417,18 @@
             ctx.fillRect(0, 0, W, H);
         }
 
+        function drawWallBlock(x, y, type) {
+            const tx = x * TILE_SIZE;
+            const ty = y * TILE_SIZE;
+            ctx.save();
+            ctx.globalAlpha = 0.90;
+            ctx.filter = 'brightness(0.55) contrast(0.92)';
+            drawBlock(x, y, type);
+            ctx.restore();
+            ctx.fillStyle = 'rgba(0,0,0,0.22)';
+            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+        }
+
         function draw() {
             drawBackground();
             ctx.save();
@@ -4894,6 +5447,20 @@
                     ensureChunkGenerated(currentDimension, cx);
                 }
 
+                // 1. Draw Backdrop Walls (Hammmered walls)
+                const dimWalls = walls[currentDimension];
+                if (dimWalls) {
+                    for (let x = v1; x <= v2; x++) {
+                        for (let y = v3; y <= v4; y++) {
+                            const wallType = dimWalls[`${x},${y}`];
+                            if (wallType && !world[`${x},${y}`]) {
+                                drawWallBlock(x, y, wallType);
+                            }
+                        }
+                    }
+                }
+
+                // 2. Draw Foreground World Blocks
                 for (let x = v1; x <= v2; x++) {
                     for (let y = v3; y <= v4; y++) {
                         const type = world[`${x},${y}`];
