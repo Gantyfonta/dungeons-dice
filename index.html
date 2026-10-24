@@ -10,6 +10,15 @@
     <script src="./sprites.js"></script>
     <script src="./recipes.js"></script>
     <script src="./structures.js"></script>
+    <script src="./biomes.js"></script>
+    <script>
+        // Early definition of handleSlotAction to prevent ReferenceError if button clicked before main script parses
+        window.handleSlotAction = function(slot, action) {
+            if (typeof window.executeSlotAction === 'function') {
+                window.executeSlotAction(slot, action);
+            }
+        };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDKs -->
     <script type="module">
@@ -358,19 +367,43 @@
         #inventory-screen { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.7); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; pointer-events: auto; }
         .mc-container { background: #c6c6c6; border: 6px solid; border-color: #eee #444 #444 #eee; padding: 20px; box-shadow: 8px 8px 0 rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 15px; position: relative; width: 620px; max-height: 95vh; overflow-y: auto; }
         .mc-label { color: #222; font-size: 9px; margin-bottom: 6px; font-weight: bold; }
-        .mc-slot { width: 48px; height: 48px; background: #8b8b8b; border: 4px solid; border-color: #373737 #fefefe #fefefe #373737; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; }
+        .mc-slot { width: 48px; height: 48px; background: #8b8b8b; border: 4px solid; border-color: #373737 #fefefe #fefefe #373737; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, border-color 0.15s ease; }
         .mc-slot:hover { background: #aaa; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.3); }
+        .mc-slot.slot-placed { animation: slotScaleBounce 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes slotScaleBounce {
+            0% { transform: scale(0.82); }
+            50% { transform: scale(1.16); }
+            100% { transform: scale(1); }
+        }
         .mc-slot.output { width: 56px; height: 56px; border-width: 5px; }
         .mc-grid { display: grid; gap: 4px; }
         #main-inventory-grid { max-height: 220px; overflow-y: auto; padding: 2px; }
         .top-section { display: flex; gap: 24px; align-items: flex-start; }
-        .crafting-section { display: flex; align-items: center; gap: 16px; }
+        .crafting-section { display: flex; align-items: center; gap: 16px; position: relative; }
+        .crafting-2x2-grid { display: grid; grid-template-columns: repeat(2, 48px); gap: 4px; padding: 2px; }
         .hexagon-crafting-grid { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px; }
         .hex-row { display: flex; justify-content: center; gap: 4px; }
-        .mc-slot.hex-slot { position: relative; border-radius: 4px; transition: transform 0.1s ease, border-color 0.1s ease; }
-        .mc-slot.hex-slot:hover { transform: scale(1.05); z-index: 5; }
+        .mc-slot.hex-slot { position: relative; border-radius: 4px; transition: transform 0.15s ease, border-color 0.15s ease; }
+        .mc-slot.hex-slot:hover { transform: scale(1.06); z-index: 5; }
         .mc-slot.hex-center { border-color: #555 #ffffff #ffffff #555; }
         .mc-slot.output.ready { border-color: #d4af37 #fff8dc #fff8dc #d4af37; animation: hex-pulse-glow 1.4s infinite ease-in-out; }
+        .sliding-craft-sprite {
+            position: absolute;
+            width: 34px;
+            height: 34px;
+            pointer-events: none;
+            transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.25, 1), opacity 0.28s ease;
+            z-index: 60;
+            filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.8));
+        }
+        .mc-slot.output.ready .block-icon {
+            animation: resultPopIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes resultPopIn {
+            0% { transform: scale(0.25); opacity: 0; filter: brightness(2.2); }
+            60% { transform: scale(1.22); opacity: 1; filter: brightness(1.3); }
+            100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+        }
         @keyframes hex-pulse-glow {
             0%, 100% { box-shadow: 0 0 6px rgba(255, 215, 0, 0.5), inset 0 0 4px rgba(255, 255, 255, 0.3); }
             50% { box-shadow: 0 0 14px rgba(255, 215, 0, 0.95), inset 0 0 8px rgba(255, 255, 255, 0.6); }
@@ -743,9 +776,17 @@
                     </div>
                     
                     <div id="crafting-view">
-                        <div class="mc-label" id="crafting-label">Hexagon Crafting</div>
-                        <div class="crafting-section">
-                            <div class="hexagon-crafting-grid" id="hexagon-crafting-grid">
+                        <div class="mc-label" id="crafting-label">Crafting</div>
+                        <div class="crafting-section" id="crafting-section">
+                            <!-- 2x2 Survival Crafting Grid -->
+                            <div class="crafting-2x2-grid" id="crafting-2x2-grid">
+                                <div class="mc-slot craft-2x2-slot" data-type="craft-2x2" data-idx="0" title="Craft Slot 0"></div>
+                                <div class="mc-slot craft-2x2-slot" data-type="craft-2x2" data-idx="1" title="Craft Slot 1"></div>
+                                <div class="mc-slot craft-2x2-slot" data-type="craft-2x2" data-idx="2" title="Craft Slot 2"></div>
+                                <div class="mc-slot craft-2x2-slot" data-type="craft-2x2" data-idx="3" title="Craft Slot 3"></div>
+                            </div>
+                            <!-- 7-Slot Hexagon Crafting Grid (Used when interacting with Crafting Table) -->
+                            <div class="hexagon-crafting-grid" id="hexagon-crafting-grid" style="display: none;">
                                 <div class="hex-row hex-row-2">
                                     <div class="mc-slot hex-slot" data-type="craft-hex" data-idx="0" title="Hex Slot 0"></div>
                                     <div class="mc-slot hex-slot" data-type="craft-hex" data-idx="1" title="Hex Slot 1"></div>
@@ -760,6 +801,8 @@
                                     <div class="mc-slot hex-slot" data-type="craft-hex" data-idx="6" title="Hex Slot 6"></div>
                                 </div>
                             </div>
+                            <!-- Floating Animation Overlay for sliding sprites -->
+                            <div id="crafting-anim-overlay" style="position: absolute; inset: 0; pointer-events: none; z-index: 50; overflow: visible;"></div>
                             <div class="arrow-right"></div>
                             <div class="mc-slot output" id="crafting-output" title="Crafted Item Output"></div>
                         </div>
@@ -1159,11 +1202,13 @@
         let mainInventory = new Array(27).fill(null);
         let hotbarInventory = new Array(9).fill(null);
         let hexagonCraftingGrid = new Array(7).fill(null);
-        let craftingGrid2x2 = hexagonCraftingGrid; // compatibility alias
+        let craftingGrid2x2 = new Array(4).fill(null);
         let craftingGrid3x3 = hexagonCraftingGrid; // compatibility alias
         let craftingOutput = null;
         let activeRecipeMatch = null;
         let heldItem = null;
+        let isCraftingAnimating = false;
+        let lastCraftingMatchSignature = '';
 
         let isUsingTable = false;
         let activeFurnacePos = null; 
@@ -1605,6 +1650,7 @@
             }
         }
         window.handleSlotAction = handleSlotAction;
+        window.executeSlotAction = handleSlotAction;
 
         function closeModeSelection() { modeSelectionEl.style.display = 'none'; pendingSaveSlot = null; }
         window.closeModeSelection = closeModeSelection;
@@ -2208,7 +2254,17 @@
                 } else {
                     craftingView.style.display = player.gameMode === 'creative' ? 'none' : 'block';
                     const craftLabel = document.getElementById('crafting-label');
-                    if (craftLabel) craftLabel.innerText = isUsingTable ? 'Crafting Table (Hexagon)' : 'Hexagon Crafting';
+                    const hexGrid = document.getElementById('hexagon-crafting-grid');
+                    const c2Grid = document.getElementById('crafting-2x2-grid');
+                    if (isUsingTable) {
+                        if (craftLabel) craftLabel.innerText = 'Crafting Table (Hexagon)';
+                        if (hexGrid) hexGrid.style.display = 'flex';
+                        if (c2Grid) c2Grid.style.display = 'none';
+                    } else {
+                        if (craftLabel) craftLabel.innerText = 'Crafting (2x2)';
+                        if (hexGrid) hexGrid.style.display = 'none';
+                        if (c2Grid) c2Grid.style.display = 'grid';
+                    }
                     document.getElementById('pig-preview').style.display = player.gameMode === 'creative' ? 'none' : 'flex';
                 }
             }
@@ -2217,7 +2273,10 @@
                 const returnItems = (grid) => { grid.forEach((item, i) => { if (item) addItemToInventory(item.id, item.count); grid[i] = null; }); };
                 if (!activeFurnacePos && !activeChestPos && !activeVillager && !activeBlueprintPos && !activeDispenserPos) { 
                     returnItems(hexagonCraftingGrid); 
+                    returnItems(craftingGrid2x2);
                 }
+                lastCraftingMatchSignature = '';
+                isCraftingAnimating = false;
                 if (activeVillager) {
                     returnItems(tradingSlots);
                     tradeOutput = null;
@@ -2277,7 +2336,7 @@
                 const slot = document.createElement('div'); slot.className = 'mc-slot';
                 slot.dataset.type = 'dispenser'; slot.dataset.idx = i; setupSlot(slot); dispenserGrid.appendChild(slot);
             }
-            document.querySelectorAll('#hexagon-crafting-grid .mc-slot').forEach(setupSlot);
+            document.querySelectorAll('#hexagon-crafting-grid .mc-slot, #crafting-2x2-grid .mc-slot').forEach(setupSlot);
             document.querySelectorAll('#furnace-view .mc-slot').forEach(setupSlot);
             document.querySelectorAll('#trading-view .mc-slot').forEach(setupSlot);
             document.querySelectorAll('.mc-slot[data-type="armor"]').forEach(setupSlot);
@@ -2285,13 +2344,15 @@
             document.getElementById('trade-output').onmousedown = (e) => { if (e.button === 0) handleTradeOutputClick(); };
         }
 
-        // Robust fallback recipe engine to guarantee crafting NEVER breaks on GitHub Pages
+        // Robust fallback recipe engine supporting both 2x2 survival and 7-slot hexagon grids
         function fallbackMatchRecipe(grid) {
-            if (!grid || !Array.isArray(grid) || grid.length !== 7) return null;
+            if (!grid || !Array.isArray(grid)) return null;
+            const gridLen = grid.length;
+            if (gridLen !== 7 && gridLen !== 4) return null;
             const counts = {};
             let total = 0;
             let occupied = 0;
-            for (let i = 0; i < 7; i++) {
+            for (let i = 0; i < gridLen; i++) {
                 const item = grid[i];
                 if (item && item.id && item.count > 0) {
                     counts[item.id] = (counts[item.id] || 0) + item.count;
@@ -2311,6 +2372,9 @@
                 }
                 return total === reqTotal;
             };
+
+            // 0. Crafting Table (12) - 4 Planks (Essential 2x2 survival recipe!)
+            if (isMatch({ 10: 4 })) return { result: 12, amount: 1 };
 
             // 1. Hammer (213)
             if (isMatch({ 7: 3, 15: 2 })) return { result: 213, amount: 1 }; // Cobble + sticks
@@ -2392,46 +2456,138 @@
             return null;
         }
 
+        // Plays a smooth animation of ingredient sprites sliding together into the center when a recipe result is ready
+        function playCraftingConvergenceAnimation(gridType, callback) {
+            const overlay = document.getElementById('crafting-anim-overlay');
+            const gridEl = gridType === 'hex' ? document.getElementById('hexagon-crafting-grid') : document.getElementById('crafting-2x2-grid');
+            if (!overlay || !gridEl) {
+                if (callback) callback();
+                return;
+            }
+
+            overlay.innerHTML = '';
+            const overlayRect = overlay.getBoundingClientRect();
+            const slots = gridEl.querySelectorAll('.mc-slot');
+
+            // Determine convergence center
+            let targetX, targetY;
+            if (gridType === 'hex') {
+                const centerSlot = gridEl.querySelector('.mc-slot.hex-center') || slots[3] || gridEl;
+                const cr = centerSlot.getBoundingClientRect();
+                targetX = cr.left + cr.width / 2 - overlayRect.left;
+                targetY = cr.top + cr.height / 2 - overlayRect.top;
+            } else {
+                const gr = gridEl.getBoundingClientRect();
+                targetX = gr.left + gr.width / 2 - overlayRect.left;
+                targetY = gr.top + gr.height / 2 - overlayRect.top;
+            }
+
+            const movingSprites = [];
+            slots.forEach(slot => {
+                const icon = slot.querySelector('.block-icon');
+                if (icon) {
+                    slot.classList.remove('slot-placed');
+                    void slot.offsetWidth;
+                    slot.classList.add('slot-placed');
+
+                    const iconRect = icon.getBoundingClientRect();
+                    const clone = icon.cloneNode(true);
+                    clone.className = 'sliding-craft-sprite';
+                    const startX = iconRect.left - overlayRect.left;
+                    const startY = iconRect.top - overlayRect.top;
+                    clone.style.left = startX + 'px';
+                    clone.style.top = startY + 'px';
+                    overlay.appendChild(clone);
+                    movingSprites.push({ el: clone, dx: targetX - (startX + iconRect.width / 2), dy: targetY - (startY + iconRect.height / 2) });
+                }
+            });
+
+            if (movingSprites.length === 0) {
+                if (callback) callback();
+                return;
+            }
+
+            requestAnimationFrame(() => {
+                movingSprites.forEach(({ el, dx, dy }) => {
+                    el.style.transform = `translate(${dx}px, ${dy}px) scale(0.55)`;
+                    el.style.opacity = '0.92';
+                });
+            });
+
+            setTimeout(() => {
+                overlay.innerHTML = '';
+                if (callback) callback();
+            }, 280);
+        }
+
         function checkRecipes() {
             craftingOutput = null;
             activeRecipeMatch = null;
             const outputSlot = document.getElementById('crafting-output');
             if (outputSlot) outputSlot.classList.remove('ready');
 
+            const activeGrid = isUsingTable ? hexagonCraftingGrid : craftingGrid2x2;
+
             // 1. Try global findHexRecipe from recipes.js
+            let match = null;
             if (typeof findHexRecipe === 'function') {
                 try {
-                    const match = findHexRecipe(hexagonCraftingGrid);
-                    if (match && match.result) {
-                        craftingOutput = { id: match.result, count: match.amount || 1 };
-                        activeRecipeMatch = match;
-                        if (outputSlot) outputSlot.classList.add('ready');
-                        return;
-                    }
+                    match = findHexRecipe(activeGrid);
                 } catch (e) {
                     console.warn("recipes.js error, falling back:", e);
                 }
             }
 
             // 2. Embedded fallback recipe matcher (ensures 100% reliable crafting on GitHub Pages!)
-            const fbMatch = fallbackMatchRecipe(hexagonCraftingGrid);
-            if (fbMatch && fbMatch.result) {
-                craftingOutput = { id: fbMatch.result, count: fbMatch.amount || 1 };
-                activeRecipeMatch = fbMatch;
-                if (outputSlot) outputSlot.classList.add('ready');
-                return;
+            if (!match || !match.result) {
+                match = fallbackMatchRecipe(activeGrid);
+            }
+
+            if (match && match.result) {
+                const sig = `${match.result}_${match.amount || 1}_${activeGrid.map(s => s ? s.id + ':' + s.count : '0').join(',')}`;
+                craftingOutput = { id: match.result, count: match.amount || 1 };
+                activeRecipeMatch = match;
+
+                if (sig !== lastCraftingMatchSignature) {
+                    lastCraftingMatchSignature = sig;
+                    // Trigger sliding animation before showing result!
+                    isCraftingAnimating = true;
+                    if (outputSlot) outputSlot.innerHTML = '';
+                    playCraftingConvergenceAnimation(isUsingTable ? 'hex' : '2x2', () => {
+                        isCraftingAnimating = false;
+                        if (outputSlot && craftingOutput) {
+                            outputSlot.innerHTML = '';
+                            outputSlot.appendChild(createItemVisual(craftingOutput.id, craftingOutput.count));
+                            outputSlot.classList.add('ready');
+                        }
+                    });
+                } else if (!isCraftingAnimating) {
+                    if (outputSlot) {
+                        outputSlot.classList.add('ready');
+                        outputSlot.innerHTML = '';
+                        outputSlot.appendChild(createItemVisual(craftingOutput.id, craftingOutput.count));
+                    }
+                }
+            } else {
+                lastCraftingMatchSignature = '';
+                isCraftingAnimating = false;
+                if (outputSlot) {
+                    outputSlot.innerHTML = '';
+                    outputSlot.classList.remove('ready');
+                }
             }
         }
 
         function handleCraftingOutputClick() {
             if (craftingOutput && (!heldItem || (heldItem.id === craftingOutput.id && heldItem.count + craftingOutput.count <= 64))) {
+                const activeGrid = isUsingTable ? hexagonCraftingGrid : craftingGrid2x2;
                 if (typeof consumeHexRecipe === 'function' && activeRecipeMatch) {
-                    consumeHexRecipe(hexagonCraftingGrid, activeRecipeMatch);
+                    consumeHexRecipe(activeGrid, activeRecipeMatch);
                 } else {
-                    for (let i = 0; i < hexagonCraftingGrid.length; i++) {
-                        if (hexagonCraftingGrid[i]) {
-                            hexagonCraftingGrid[i].count--;
-                            if (hexagonCraftingGrid[i].count <= 0) hexagonCraftingGrid[i] = null;
+                    for (let i = 0; i < activeGrid.length; i++) {
+                        if (activeGrid[i]) {
+                            activeGrid[i].count--;
+                            if (activeGrid[i].count <= 0) activeGrid[i] = null;
                         }
                     }
                 }
@@ -2441,6 +2597,7 @@
                 player.itemsCrafted += craftingOutput.count;
                 if (player.itemsCrafted % 5 === 0) syncLeaderboard();
                 
+                lastCraftingMatchSignature = '';
                 renderInventory();
                 updateHeldItemCursor();
             }
@@ -2463,7 +2620,7 @@
             if (type === 'main') targetArray = mainInventory;
             else if (type === 'hotbar') targetArray = hotbarInventory;
             else if (type === 'craft-hex') targetArray = hexagonCraftingGrid;
-            else if (type === 'craft2' || type === 'craft3') targetArray = hexagonCraftingGrid;
+            else if (type === 'craft-2x2' || type === 'craft2' || type === 'craft3') targetArray = craftingGrid2x2;
             else if (type === 'chest') targetArray = tileEntities[currentDimension][activeChestPos].items;
             else if (type === 'dispenser') targetArray = tileEntities[currentDimension][activeDispenserPos].items;
             else if (type === 'trade-input') targetArray = tradingSlots;
@@ -2544,6 +2701,12 @@
                     current.count -= take; 
                     if (current.count <= 0) targetArray[idx] = null; 
                 }
+            }
+            const clickedSlotEl = document.querySelector(`.mc-slot[data-type="${type}"][data-idx="${idx}"]`);
+            if (clickedSlotEl) {
+                clickedSlotEl.classList.remove('slot-placed');
+                void clickedSlotEl.offsetWidth;
+                clickedSlotEl.classList.add('slot-placed');
             }
             updateHeldItemCursor(); renderInventory(); updateHUD();
         }
@@ -2666,16 +2829,26 @@
             } else if (activeBlueprintPos) {
                 // View specific logic if needed
             } else {
-                const hexSlots = document.querySelectorAll('#hexagon-crafting-grid .mc-slot');
-                hexagonCraftingGrid.forEach((item, i) => { 
-                    if (hexSlots[i]) { 
-                        hexSlots[i].innerHTML = ''; 
-                        if (item) hexSlots[i].appendChild(createItemVisual(item.id, item.count)); 
-                    } 
-                });
+                if (isUsingTable) {
+                    const hexSlots = document.querySelectorAll('#hexagon-crafting-grid .mc-slot');
+                    hexagonCraftingGrid.forEach((item, i) => { 
+                        if (hexSlots[i]) { 
+                            hexSlots[i].innerHTML = ''; 
+                            if (item) hexSlots[i].appendChild(createItemVisual(item.id, item.count)); 
+                        } 
+                    });
+                } else {
+                    const c2Slots = document.querySelectorAll('#crafting-2x2-grid .mc-slot');
+                    craftingGrid2x2.forEach((item, i) => { 
+                        if (c2Slots[i]) { 
+                            c2Slots[i].innerHTML = ''; 
+                            if (item) c2Slots[i].appendChild(createItemVisual(item.id, item.count)); 
+                        } 
+                    });
+                }
                 checkRecipes();
                 const outputSlot = document.getElementById('crafting-output');
-                if (outputSlot) {
+                if (outputSlot && !isCraftingAnimating) {
                     outputSlot.innerHTML = '';
                     if (craftingOutput) outputSlot.appendChild(createItemVisual(craftingOutput.id, craftingOutput.count));
                 }
@@ -3222,15 +3395,14 @@
                 }
             }
 
-            if (count > 0) {
-                if (!compiledChunks[dim]) compiledChunks[dim] = {};
-                compiledChunks[dim][cx] = {
-                    b: bList,
-                    w: wList.length > 0 ? wList : null,
-                    te: Object.keys(teData).length > 0 ? teData : null,
-                    rot: Object.keys(rotData).length > 0 ? rotData : null
-                };
-            }
+            if (!compiledChunks[dim]) compiledChunks[dim] = {};
+            compiledChunks[dim][cx] = {
+                b: bList.length > 0 ? bList : null,
+                w: wList.length > 0 ? wList : null,
+                te: Object.keys(teData).length > 0 ? teData : null,
+                rot: Object.keys(rotData).length > 0 ? rotData : null,
+                empty: count === 0
+            };
         }
 
         function unpackChunk(dim, cx) {
@@ -3270,10 +3442,10 @@
             const dim = currentDimension;
             if (!generatedChunks[dim]) return;
 
+            // Automatically compile chunks outside the player radius to preserve memory and prevent adventure lag
             for (const cx of generatedChunks[dim]) {
                 if (Math.abs(cx - playerCx) > UNLOAD_CHUNK_RADIUS) {
-                    const sampleKey = `${cx * CHUNK_SIZE},${WORLD_HEIGHT - 1}`;
-                    if (worlds[dim] && worlds[dim][sampleKey] !== undefined) {
+                    if (!compiledChunks[dim] || !compiledChunks[dim][cx]) {
                         compileChunk(dim, cx);
                     }
                 }
@@ -3291,9 +3463,12 @@
             generateChunk(dim, cx);
         }
 
+        // Modular Biomes system - delegates directly to /biomes.js
         function getOverworldBiome(x) {
+            if (window.BIOME_SYSTEM && typeof window.BIOME_SYSTEM.getOverworldBiome === 'function') {
+                return window.BIOME_SYSTEM.getOverworldBiome(x, getSeedNumber());
+            }
             const seed = getSeedNumber();
-            // Large natural biomes (160-260+ blocks wide per biome)
             const t = Math.sin(x * 0.0038 + seed * 0.0001) + 0.38 * Math.sin(x * 0.0105 + 1.7);
             if (t < -0.38) return 'ocean';
             if (t > 0.38) return 'desert';
@@ -3302,32 +3477,25 @@
         }
 
         function getOverworldSurfaceY(x) {
+            if (window.BIOME_SYSTEM && typeof window.BIOME_SYSTEM.getOverworldSurfaceY === 'function') {
+                return window.BIOME_SYSTEM.getOverworldSurfaceY(x, getSeedNumber());
+            }
             const seed = getSeedNumber();
             const biome = getOverworldBiome(x);
-            // Smooth multi-octave harmonic waves for natural rolling landscape without single-block jitter:
-            // 1. Broad regional elevation (period ~220-300 blocks)
             const broad = Math.sin(x * 0.009 + seed * 0.0001) * 5.5;
-            // 2. Rolling hills and valleys (period ~80-120 blocks)
             const hills = Math.sin(x * 0.022 + seed * 0.0002 + 1.3) * 3.4;
-            // 3. Gentle knolls and little bumps (period ~40-60 blocks)
             const bumps = Math.sin(x * 0.048 + seed * 0.0003 + 2.6) * 1.2;
-
             let baseY = 42;
-            if (biome === 'ocean') {
-                // Smooth dip into ocean seabed (base Y=53-56, below sea level 45)
-                const depthSwell = Math.sin(x * 0.025 + 0.9) * 2.2;
-                baseY = 53 + depthSwell;
-            } else if (biome === 'desert') {
-                // Rolling sand dunes (base Y=38-42)
-                const dunes = Math.sin(x * 0.028 + seed * 0.0004) * 2.5;
-                baseY = 39 + dunes;
-            } else {
-                baseY = 41;
-            }
+            if (biome === 'ocean') baseY = 53 + Math.sin(x * 0.025 + 0.9) * 2.2;
+            else if (biome === 'desert') baseY = 39 + Math.sin(x * 0.028 + seed * 0.0004) * 2.5;
+            else baseY = 41;
             return Math.max(22, Math.min(62, Math.round(baseY + broad + hills + bumps)));
         }
 
         function isOverworldCave(x, y) {
+            if (window.BIOME_SYSTEM && typeof window.BIOME_SYSTEM.isOverworldCave === 'function') {
+                return window.BIOME_SYSTEM.isOverworldCave(x, y, getSeedNumber());
+            }
             if (y <= 4 || y >= WORLD_HEIGHT - 2) return false;
             const cave = Math.sin(x * 0.21 + y * 0.14 + getSeedNumber() * 0.00002) +
                          Math.sin(x * 0.09 - y * 0.28) +

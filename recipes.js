@@ -489,13 +489,21 @@
      * @param {Array<Object|null>} grid Array of 7 slots (null or { id, count })
      * @returns {Object|null} Match object or null if no recipe matches
      */
+    /**
+     * Finds a matching recipe for the items currently placed on the crafting grid.
+     * Supports both the 4-slot survival 2x2 grid and the 7-slot hexagon crafting table!
+     * @param {Array<Object|null>} grid Array of 4 or 7 slots (null or { id, count })
+     * @returns {Object|null} Match object or null if no recipe matches
+     */
     function findHexRecipe(grid) {
-        if (!grid || !Array.isArray(grid) || grid.length !== 7) return null;
+        if (!grid || !Array.isArray(grid)) return null;
+        const gridLen = grid.length;
+        if (gridLen !== 7 && gridLen !== 4) return null;
 
         // Check if any slot has items
         const occupied = [];
         const countsById = {};
-        for (let i = 0; i < 7; i++) {
+        for (let i = 0; i < gridLen; i++) {
             const item = grid[i];
             if (item && item.id && item.count > 0) {
                 occupied.push({ slot: i, id: item.id, count: item.count });
@@ -512,7 +520,16 @@
                 let match = true;
                 const reqSlots = recipe.slots || {};
 
-                for (let i = 0; i < 7; i++) {
+                // For 4-slot grid, reject recipes that require slots 4, 5, or 6
+                if (gridLen === 4) {
+                    let hasOutOfRangeSlot = false;
+                    for (const s of Object.keys(reqSlots)) {
+                        if (Number(s) >= 4) { hasOutOfRangeSlot = true; break; }
+                    }
+                    if (hasOutOfRangeSlot) continue;
+                }
+
+                for (let i = 0; i < gridLen; i++) {
                     const reqVal = reqSlots[i];
                     if (reqVal !== undefined && reqVal !== null) {
                         const targetId = resolveItemId(reqVal);
@@ -570,6 +587,9 @@
                 }
             }
 
+            // On a 2x2 grid (4 slots), recipes that require more than 4 ingredients cannot be crafted!
+            if (reqTotalSlots > gridLen) continue;
+
             const reqDistinctIds = Object.keys(reqCountsById).map(Number);
             if (reqDistinctIds.length === 0) continue;
 
@@ -595,7 +615,6 @@
             if (!hasEnough) continue;
 
             // Strict condition C: Occupied slots must not exceed required ingredients
-            // (Prevents extra occupied slots from matching smaller recipes, e.g. 3 planks matching a 2-plank stick recipe)
             if (occupied.length > reqTotalSlots) continue;
 
             // Total items currently on grid vs items required by this recipe
@@ -603,13 +622,9 @@
             for (const c of Object.values(countsById)) totalGridItems += c;
 
             // Scoring:
-            // 1. More specific recipes (requiring more items) score higher base
             let score = reqTotalSlots * 30;
-            // 2. Bonus if recipe item count matches total items on grid
             if (reqTotalSlots === totalGridItems) score += 60;
-            // 3. Bonus if slot count matches
             if (reqTotalSlots === occupied.length) score += 40;
-            // 4. Bonus for multi-ingredient combinations
             score += reqDistinctIds.length * 15;
 
             if (score > bestScore) {
@@ -630,8 +645,8 @@
     }
 
     /**
-     * Consumes ingredients from the 7-slot hexagon grid for the given recipe match.
-     * @param {Array<Object|null>} grid Array of 7 slots
+     * Consumes ingredients from the crafting grid for the given recipe match.
+     * @param {Array<Object|null>} grid Array of slots (4 or 7)
      * @param {Object} matchResult Match result from findHexRecipe
      */
     function consumeHexRecipe(grid, matchResult) {
@@ -658,7 +673,7 @@
                 const targetId = Number(idStr);
                 let remainingToDeduct = neededCount;
 
-                for (let i = 0; i < 7; i++) {
+                for (let i = 0; i < grid.length; i++) {
                     if (grid[i] && grid[i].id === targetId) {
                         const deduct = Math.min(grid[i].count, remainingToDeduct);
                         grid[i].count -= deduct;

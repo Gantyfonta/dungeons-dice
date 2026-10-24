@@ -4,7 +4,7 @@
  * ==============================================================================
  * 
  * Welcome to the structure editor! You can create and customize any world-generating
- * structure right in this file, similar to sprites.js and recipes.js.
+ * structure right in this file, similar to sprites.js, recipes.js, and biomes.js.
  * 
  * HOW TO EDIT OR CREATE STRUCTURES:
  * ------------------------------------------------------------------------------
@@ -24,7 +24,10 @@
  *              Use '.' or ' ' for empty air (skip or clear).
  *    - grid: Array of strings representing the structure from TOP row to BOTTOM row!
  *            Each character in each row maps to a block in 'blocks'.
- *    - chestLoot: Optional array of loot item definitions for any chest ('C') in the structure.
+ *    - lootTable: Name of a loot table from LOOT_TABLES (e.g. 'village', 'desert_pyramid',
+ *                 'ocean_ruin', 'ruined_portal', 'nether_fortress', 'dungeon')
+ *                 OR a custom inline loot table object { rolls: [min, max], items: [...] }!
+ *    - chestLoot: Optional explicit array of loot items for chests ('C') in the structure.
  *    - mobSpawns: Optional mobs to spawn with the structure.
  * 
  * EXAMPLE:
@@ -46,9 +49,7 @@
  *       "w..C..w",
  *       "ccccccc"
  *     ],
- *     chestLoot: [
- *       { id: 32, countMin: 1, countMax: 3, chance: 0.7 } // Gold
- *     ]
+ *     lootTable: "desert_pyramid" // Uses LOOT_TABLES.desert_pyramid
  *   };
  * ==============================================================================
  */
@@ -58,6 +59,213 @@
 
     // Global Registry of all structures
     const STRUCTURES = {};
+
+    // --------------------------------------------------------------------------
+    // 0. LOOT TABLES REGISTRY FOR CHESTS
+    // --------------------------------------------------------------------------
+    const LOOT_TABLES = {
+        village: {
+            rolls: [3, 6],
+            items: [
+                { id: 30, name: 'Coal', weight: 35, count: [3, 8] },
+                { id: 10, name: 'Oak Planks', weight: 40, count: [4, 12] },
+                { id: 95, name: 'Emerald', weight: 20, count: [1, 3] },
+                { id: 31, name: 'Iron Ingot', weight: 25, count: [1, 4] },
+                { id: 93, name: 'Oak Sapling', weight: 20, count: [1, 3] },
+                { id: 70, name: 'Apple', weight: 25, count: [2, 5] },
+                { id: 170, name: 'Wheat', weight: 30, count: [3, 7] },
+                { id: 72, name: 'Bread', weight: 25, count: [1, 4] },
+                { id: 33, name: 'Diamond', weight: 4, count: [1, 1] }
+            ]
+        },
+        desert_pyramid: {
+            rolls: [4, 7],
+            items: [
+                { id: 32, name: 'Gold Ingot', weight: 35, count: [2, 7] },
+                { id: 34, name: 'Redstone Dust', weight: 40, count: [4, 12] },
+                { id: 31, name: 'Iron Ingot', weight: 30, count: [2, 5] },
+                { id: 33, name: 'Diamond', weight: 15, count: [1, 3] },
+                { id: 95, name: 'Emerald', weight: 20, count: [1, 3] },
+                { id: 59, name: 'Flint and Steel', weight: 15, count: [1, 1] },
+                { id: 11, name: 'Clock', weight: 15, count: [1, 1] },
+                { id: 211, name: 'Metal Scrap', weight: 25, count: [2, 6] },
+                { id: 201, name: 'Golden Apple', weight: 8, count: [1, 1] }
+            ]
+        },
+        ocean_shipwreck: {
+            rolls: [3, 6],
+            items: [
+                { id: 31, name: 'Iron Ingot', weight: 35, count: [2, 6] },
+                { id: 32, name: 'Gold Ingot', weight: 25, count: [1, 4] },
+                { id: 211, name: 'Metal Scrap', weight: 30, count: [3, 8] },
+                { id: 200, name: 'Glass Bottle', weight: 30, count: [1, 4] },
+                { id: 71, name: 'Fishing Rod', weight: 20, count: [1, 1] },
+                { id: 95, name: 'Emerald', weight: 15, count: [1, 2] },
+                { id: 33, name: 'Diamond', weight: 10, count: [1, 2] }
+            ]
+        },
+        ocean_ruin: {
+            rolls: [2, 5],
+            items: [
+                { id: 32, name: 'Gold Ingot', weight: 30, count: [2, 5] },
+                { id: 52, name: 'Glowstone', weight: 25, count: [2, 6] },
+                { id: 211, name: 'Metal Scrap', weight: 25, count: [2, 5] },
+                { id: 31, name: 'Iron Ingot', weight: 25, count: [1, 3] },
+                { id: 95, name: 'Emerald', weight: 15, count: [1, 2] }
+            ]
+        },
+        ruined_portal: {
+            rolls: [3, 6],
+            items: [
+                { id: 25, name: 'Gold Ore', weight: 30, count: [2, 6] },
+                { id: 32, name: 'Gold Ingot', weight: 35, count: [1, 5] },
+                { id: 28, name: 'Obsidian', weight: 25, count: [1, 4] },
+                { id: 59, name: 'Flint and Steel', weight: 20, count: [1, 1] },
+                { id: 201, name: 'Golden Apple', weight: 10, count: [1, 1] },
+                { id: 31, name: 'Iron Ingot', weight: 20, count: [1, 3] }
+            ]
+        },
+        nether_fortress: {
+            rolls: [4, 7],
+            items: [
+                { id: 32, name: 'Gold Ingot', weight: 35, count: [3, 8] },
+                { id: 33, name: 'Diamond', weight: 15, count: [1, 3] },
+                { id: 125, name: 'Nether Ingot', weight: 20, count: [1, 2] },
+                { id: 28, name: 'Obsidian', weight: 25, count: [2, 5] },
+                { id: 211, name: 'Metal Scrap', weight: 25, count: [2, 6] }
+            ]
+        },
+        aether_shrine: {
+            rolls: [3, 6],
+            items: [
+                { id: 115, name: 'Ambrosium Shard', weight: 35, count: [3, 8] },
+                { id: 116, name: 'Zanite Gem', weight: 30, count: [2, 5] },
+                { id: 117, name: 'Golden Amber', weight: 20, count: [1, 3] },
+                { id: 118, name: 'Gravitite', weight: 12, count: [1, 2] },
+                { id: 114, name: 'Aether Quartz', weight: 25, count: [2, 6] }
+            ]
+        },
+        dungeon: {
+            rolls: [4, 7],
+            items: [
+                { id: 31, name: 'Iron Ingot', weight: 35, count: [2, 6] },
+                { id: 30, name: 'Coal', weight: 30, count: [4, 10] },
+                { id: 34, name: 'Redstone Dust', weight: 25, count: [3, 8] },
+                { id: 33, name: 'Diamond', weight: 15, count: [1, 2] },
+                { id: 72, name: 'Bread', weight: 30, count: [2, 5] },
+                { id: 201, name: 'Golden Apple', weight: 8, count: [1, 1] }
+            ]
+        }
+    };
+
+    /**
+     * Resolves an item identifier to a numeric ID.
+     */
+    function resolveItemId(val) {
+        if (typeof val === 'number') return val;
+        if (!val || typeof val !== 'string') return 1;
+        const key = val.toLowerCase().replace(/[\s-]/g, '_');
+        const names = {
+            'air': 0, 'stone': 3, 'grass': 1, 'dirt': 2, 'cobble': 7, 'cobblestone': 7,
+            'planks': 10, 'oak_planks': 10, 'wood': 4, 'log': 4, 'oak_log': 4,
+            'glass': 9, 'sand': 8, 'sandstone': 220, 'gravel': 57,
+            'coal': 30, 'iron_ingot': 31, 'iron': 31, 'gold_ingot': 32, 'gold': 32,
+            'diamond': 33, 'emerald': 95, 'redstone_dust': 34, 'redstone': 34,
+            'flint': 58, 'flint_and_steel': 59, 'obsidian': 28, 'clock': 11,
+            'bread': 72, 'apple': 70, 'wheat': 170, 'golden_apple': 201,
+            'metal_scrap': 211, 'scrap': 211, 'scrap_block': 212,
+            'glass_bottle': 200, 'empty_bottle': 200, 'bottle': 200,
+            'fishing_rod': 71, 'cactus': 218, 'dead_bush': 219,
+            'wooden_door': 214, 'door': 214, 'trapdoor': 217, 'wooden_trapdoor': 217,
+            'hammer': 213, 'chest': 94
+        };
+        return names[key] || 1;
+    }
+
+    /**
+     * Registers a custom loot table that any structure can reference by name.
+     */
+    function registerLootTable(name, tableDef) {
+        if (!name || typeof tableDef !== 'object') return;
+        LOOT_TABLES[name] = tableDef;
+    }
+
+    /**
+     * Generates a 27-slot Minecraft-style chest inventory with items distributed
+     * realistically across random slots according to loot tables or chestLoot definitions.
+     */
+    function generateChestItems(struct, posKey, rngHash) {
+        const items = new Array(27).fill(null);
+        let table = null;
+
+        if (struct.lootTable) {
+            if (typeof struct.lootTable === 'string') {
+                table = LOOT_TABLES[struct.lootTable] || null;
+            } else if (typeof struct.lootTable === 'object') {
+                table = struct.lootTable;
+            }
+        }
+
+        if (table && table.items && table.items.length) {
+            const rollsRange = table.rolls || [3, 6];
+            const minRolls = rollsRange[0] || 2;
+            const maxRolls = rollsRange[1] || minRolls;
+            const numRolls = minRolls + Math.floor(rngHash(posKey, 111) * (maxRolls - minRolls + 1));
+            
+            const totalWeight = table.items.reduce((acc, it) => acc + (it.weight || 10), 0);
+            
+            for (let r = 0; r < numRolls; r++) {
+                let rollVal = rngHash(posKey, 200 + r * 13) * totalWeight;
+                let chosen = table.items[0];
+                for (const item of table.items) {
+                    const w = item.weight || 10;
+                    if (rollVal <= w) {
+                        chosen = item;
+                        break;
+                    }
+                    rollVal -= w;
+                }
+
+                if (chosen) {
+                    const id = resolveItemId(chosen.id);
+                    const countRange = chosen.count || [chosen.countMin || 1, chosen.countMax || 1];
+                    const cMin = Array.isArray(countRange) ? countRange[0] : (chosen.countMin || 1);
+                    const cMax = Array.isArray(countRange) ? countRange[1] : (chosen.countMax || cMin);
+                    const count = cMin + Math.floor(rngHash(posKey, 500 + r * 17) * (cMax - cMin + 1));
+
+                    // Random slot distribution across the 27 chest slots
+                    let slot = Math.floor(rngHash(posKey, 700 + r * 19) * 27);
+                    let attempts = 0;
+                    while (items[slot] && attempts < 27) {
+                        slot = (slot + 1) % 27;
+                        attempts++;
+                    }
+                    items[slot] = { id, count };
+                }
+            }
+        } else if (struct.chestLoot && struct.chestLoot.length) {
+            // Explicit chest loot items
+            for (let i = 0; i < struct.chestLoot.length; i++) {
+                const loot = struct.chestLoot[i];
+                const chance = loot.chance !== undefined ? loot.chance : 1.0;
+                if (rngHash(posKey, 900 + i * 23) <= chance) {
+                    const id = resolveItemId(loot.id);
+                    const countMin = loot.countMin || 1;
+                    const countMax = loot.countMax || countMin;
+                    const count = countMin + Math.floor(rngHash(posKey, 950 + i * 29) * (countMax - countMin + 1));
+                    
+                    let slot = loot.slot !== undefined ? loot.slot : Math.floor(rngHash(posKey, 990 + i * 31) * 27);
+                    let attempts = 0;
+                    while (items[slot] && attempts < 27) {
+                        slot = (slot + 1) % 27;
+                        attempts++;
+                    }
+                    items[slot] = { id, count };
+                }
+            }
+        }
+        return items;
+    }
 
     // --------------------------------------------------------------------------
     // 1. OVERWORLD - PLAINS & FOREST STRUCTURES
@@ -87,7 +295,7 @@
         ]
     };
 
-    // Village House
+    // Village House with Chest & Villager
     STRUCTURES["village_house"] = {
         name: "Village House",
         dimension: "overworld",
@@ -115,12 +323,7 @@
             "w.C.......D.w",
             "ccccccccccccc"
         ],
-        chestLoot: [
-            { id: 30, countMin: 4, countMax: 10, chance: 0.9 }, // Coal
-            { id: 95, countMin: 1, countMax: 3, chance: 0.5 },  // Emerald
-            { id: 10, countMin: 6, countMax: 16, chance: 0.8 }, // Planks
-            { id: 31, countMin: 1, countMax: 3, chance: 0.3 }   // Iron
-        ],
+        lootTable: "village",
         mobSpawns: [
             { type: "villager", offsetX: 4, offsetY: -2 }
         ]
@@ -152,12 +355,7 @@
             " gonnnoC ",
             "nnnnnnnnn"
         ],
-        chestLoot: [
-            { id: 25, countMin: 2, countMax: 5, chance: 0.8 }, // Gold Ore
-            { id: 32, countMin: 1, countMax: 3, chance: 0.6 }, // Gold Ingot
-            { id: 28, countMin: 1, countMax: 3, chance: 0.5 }, // Obsidian
-            { id: 59, countMin: 1, countMax: 1, chance: 0.4 }  // Flint & Steel
-        ]
+        lootTable: "ruined_portal"
     };
 
     // --------------------------------------------------------------------------
@@ -256,12 +454,7 @@
             "SSSSSSSC.g.CSSSSSSS",
             "SSSSSSSSSSSSSSSSSSS"
         ],
-        chestLoot: [
-            { id: 32, countMin: 3, countMax: 8, chance: 0.9 }, // Gold Ingots
-            { id: 34, countMin: 5, countMax: 14, chance: 0.9 }, // Redstone Dust
-            { id: 33, countMin: 1, countMax: 2, chance: 0.4 },  // Diamond
-            { id: 11, countMin: 1, countMax: 1, chance: 0.5 }   // Clock
-        ]
+        lootTable: "desert_pyramid"
     };
 
     // --------------------------------------------------------------------------
@@ -293,13 +486,7 @@
             " wwwwwCwwwww ",
             "  wwwwwwwww  "
         ],
-        chestLoot: [
-            { id: 32, countMin: 2, countMax: 6, chance: 0.8 }, // Gold Ingot
-            { id: 31, countMin: 2, countMax: 5, chance: 0.8 }, // Iron Ingot
-            { id: 200, countMin: 1, countMax: 3, chance: 0.7 }, // Glass Bottle
-            { id: 211, countMin: 2, countMax: 5, chance: 0.6 }, // Metal Scrap
-            { id: 71, countMin: 1, countMax: 1, chance: 0.4 }   // Fishing Rod
-        ]
+        lootTable: "ocean_shipwreck"
     };
 
     // Ocean Underwater Ruin
@@ -325,11 +512,7 @@
             " S.C..S ",
             "cSSSSSc"
         ],
-        chestLoot: [
-            { id: 31, countMin: 1, countMax: 3, chance: 0.7 },
-            { id: 32, countMin: 1, countMax: 4, chance: 0.6 },
-            { id: 95, countMin: 1, countMax: 1, chance: 0.3 }
-        ]
+        lootTable: "ocean_ruin"
     };
 
     // --------------------------------------------------------------------------
@@ -358,11 +541,7 @@
             "  nn         nn  ",
             "  nn         nn  "
         ],
-        chestLoot: [
-            { id: 32, countMin: 2, countMax: 6, chance: 0.9 }, // Gold
-            { id: 33, countMin: 1, countMax: 2, chance: 0.4 }, // Diamond
-            { id: 59, countMin: 1, countMax: 1, chance: 0.5 }  // Flint & Steel
-        ]
+        lootTable: "nether_fortress"
     };
 
     // --------------------------------------------------------------------------
@@ -427,7 +606,7 @@
      * - Character to block mapping
      * - Doors linking (215 bottom + 216 top)
      * - Trapdoors (217)
-     * - Chests loot generation
+     * - Chests loot generation via LOOT_TABLES or chestLoot
      * - Mobs spawning
      */
     function placeStructure(structDefOrKey, world, startX, groundY, dim, tileEntities, spawnMob, rngHashFn) {
@@ -481,25 +660,10 @@
                     } else {
                         world[posKey] = blockId;
 
-                        // Chest entity & loot
+                        // Chest entity & loot generation from LOOT_TABLES
                         if (blockId === 94) {
                             if (!tileEntities[dim]) tileEntities[dim] = {};
-                            const items = new Array(27).fill(null);
-                            if (struct.chestLoot && struct.chestLoot.length) {
-                                let slotIdx = 0;
-                                for (const loot of struct.chestLoot) {
-                                    if (slotIdx >= 27) break;
-                                    const chance = loot.chance !== undefined ? loot.chance : 1.0;
-                                    const rVal = hash(wx + slotIdx, wy, 991);
-                                    if (rVal <= chance) {
-                                        const countMin = loot.countMin || 1;
-                                        const countMax = loot.countMax || countMin;
-                                        const count = countMin + Math.floor(hash(wx, wy + slotIdx, 992) * (countMax - countMin + 1));
-                                        items[slotIdx] = { id: loot.id, count };
-                                        slotIdx++;
-                                    }
-                                }
-                            }
+                            const items = generateChestItems(struct, posKey, (k, s) => hash(wx + s, wy, s));
                             tileEntities[dim][posKey] = { items };
                         }
 
@@ -603,17 +767,25 @@
 
     // Export to global scope
     root.STRUCTURES = STRUCTURES;
+    root.LOOT_TABLES = LOOT_TABLES;
+    root.registerLootTable = registerLootTable;
+    root.generateChestItems = generateChestItems;
     root.placeStructure = placeStructure;
     root.canStructureSpawn = canStructureSpawn;
     root.checkAndSpawnStructures = checkAndSpawnStructures;
+    root.resolveItemId = resolveItemId;
 
     // Export to module.exports for Node/Bundlers
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             STRUCTURES,
+            LOOT_TABLES,
+            registerLootTable,
+            generateChestItems,
             placeStructure,
             canStructureSpawn,
-            checkAndSpawnStructures
+            checkAndSpawnStructures,
+            resolveItemId
         };
     }
 
